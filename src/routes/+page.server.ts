@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import { dev } from '$app/environment';
+import { redirect } from '@sveltejs/kit';
 import yaml from 'js-yaml';
 import type { Configuration, Dashboard, Translations } from '$lib/Types';
 import dotenv from 'dotenv';
@@ -30,12 +31,15 @@ async function loadFile(file: string) {
 /**
  * Server load function
  */
-export async function load({ request }): Promise<{
+export async function load({ request, url }): Promise<{
 	configuration: Configuration;
 	dashboard: Dashboard;
 	theme: any;
 	translations: Translations;
 }> {
+	// the floor plan is the home page; the classic Fusion dashboard stays at /?fusion
+	if (!url.searchParams.has('fusion')) redirect(307, `${url.pathname.replace(/\/$/, '')}/floorplan`);
+
 	// must be loaded first
 	const [configuration, dashboard] = await Promise.all([
 		loadFile('./data/configuration.yaml'),
