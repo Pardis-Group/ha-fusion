@@ -1,0 +1,16 @@
+# Local build of our fork, runs beside Home Assistant on this server.
+# Rebuild after code changes:
+#   docker compose -f compose-local.yml up -d --build
+services:
+  ha-fusion:
+    container_name: ha-fusion
+    build: .
+    image: ha-fusion:local
+    volumes:
+      - /home/len-ser-01/ha-fusion-data:/app/data
+    ports:
+      - "3015:5050"
+    environment:
+      TZ: Asia/Tehran
+      HASS_URL: http://192.168.1.110:8123
+    restart: unless-stopped
