@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+  <!-- Placeholder floor plan. Replace with a render of your own home (e.g. from Sweet Home 3D). -->
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a97a52"/>
+      <stop offset="1" stop-color="#8b5e3c"/>
+    </linearGradient>
+    <linearGradient id="woodLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c49a6c"/>
+      <stop offset="1" stop-color="#a67a52"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9d6cf"/>
+      <stop offset="1" stop-color="#b9b6ae"/>
+    </linearGradient>
+    <pattern id="planks" width="40" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(90)">
+      <rect width="40" height="12" fill="transparent"/>
+      <line x1="0" y1="12" x2="40" y2="12" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>
+      <line x1="20" y1="0" x2="20" y2="12" stroke="rgba(0,0,0,0.06)" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="10" dy="16" stdDeviation="14" flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="inner" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- building footprint shadow -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="80" width="920" height="640" rx="6" fill="#3a3330"/>
+  </g>
+
+  <!-- floors -->
+  <!-- Living room -->
+  <rect x="160" y="100" width="520" height="380" fill="url(#wood)"/>
+  <rect x="160" y="100" width="520" height="380" fill="url(#planks)"/>
+  <!-- Office -->
+  <rect x="700" y="100" width="340" height="260" fill="url(#woodLight)"/>
+  <rect x="700" y="100" width="340" height="260" fill="url(#planks)"/>
+  <!-- Floor / hallway -->
+  <rect x="160" y="500" width="880" height="100" fill="url(#tile)"/>
+  <!-- Bedroom -->
+  <rect x="700" y="380" width="340" height="100" fill="url(#woodLight)"/>
+  <rect x="700" y="380" width="340" height="100" fill="url(#planks)"/>
+  <rect x="160" y="620" width="880" height="80" fill="url(#wood)"/>
+  <rect x="160" y="620" width="880" height="80" fill="url(#planks)"/>
+
+  <!-- soft room vignette -->
+  <rect x="160" y="100" width="880" height="600" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="30" filter="url(#inner)"/>
+
+  <!-- walls -->
+  <g fill="#ece9e2">
+    <rect x="140" y="80" width="920" height="20"/>
+    <rect x="140" y="700" width="920" height="20"/>
+    <rect x="140" y="80" width="20" height="640"/>
+    <rect x="1040" y="80" width="20" height="640"/>
+    <!-- living / office -->
+    <rect x="680" y="100" width="20" height="150"/>
+    <rect x="680" y="320" width="20" height="160"/>
+    <!-- office / bedroom -->
+    <rect x="700" y="360" width="200" height="20"/>
+    <rect x="970" y="360" width="70" height="20"/>
+    <!-- rooms / hallway -->
+    <rect x="160" y="480" width="200" height="20"/>
+    <rect x="430" y="480" width="250" height="20"/>
+    <rect x="700" y="480" width="140" height="20"/>
+    <rect x="910" y="480" width="130" height="20"/>
+    <!-- hallway / bottom bedroom -->
+    <rect x="160" y="600" width="400" height="20"/>
+    <rect x="630" y="600" width="410" height="20"/>
+  </g>
+
+  <!-- door swings -->
+  <g fill="none" stroke="rgba(236,233,226,0.6)" stroke-width="2">
+    <path d="M360 500 A70 70 0 0 1 430 500"/>
+    <path d="M840 500 A70 70 0 0 1 910 500"/>
+    <path d="M560 620 A70 70 0 0 1 630 620"/>
+    <path d="M690 250 A70 70 0 0 1 690 320"/>
+    <path d="M900 370 A70 70 0 0 1 970 370"/>
+  </g>
+
+  <!-- furniture: living room -->
+  <g>
+    <rect x="200" y="140" width="200" height="70" rx="12" fill="#5c5a58"/>
+    <rect x="200" y="140" width="200" height="22" rx="10" fill="#6c6a68"/>
+    <rect x="200" y="210" width="70" height="120" rx="12" fill="#5c5a58"/>
+    <rect x="300" y="260" width="120" height="60" rx="8" fill="#3b2f27"/>
+    <rect x="520" y="150" width="30" height="180" rx="4" fill="#1d1d1f"/>
+    <rect x="540" y="140" width="110" height="200" rx="6" fill="#4a3b31"/>
+    <circle cx="600" cy="420" r="38" fill="#2f5f3b"/>
+    <circle cx="600" cy="420" r="28" fill="#3d7a4c"/>
+    <rect x="200" y="380" width="260" height="80" rx="40" fill="#7a6a58" opacity="0.6"/>
+  </g>
+
+  <!-- furniture: office -->
+  <g>
+    <rect x="740" y="130" width="260" height="70" rx="6" fill="#2d2a28"/>
+    <rect x="820" y="140" width="100" height="40" rx="3" fill="#1b1b1d"/>
+    <rect x="840" y="210" width="60" height="50" rx="20" fill="#44403d"/>
+    <rect x="990" y="230" width="30" height="110" rx="4" fill="#3b2f27"/>
+    <circle cx="730" cy="330" r="22" fill="#2f5f3b"/>
+  </g>
+
+  <!-- furniture: bedroom (bottom) -->
+  <g>
+    <rect x="200" y="630" width="170" height="60" rx="8" fill="#e6e1d8"/>
+    <rect x="200" y="630" width="170" height="18" rx="6" fill="#cfc9bf"/>
+    <rect x="380" y="640" width="40" height="40" rx="4" fill="#3b2f27"/>
+    <rect x="740" y="630" width="170" height="60" rx="8" fill="#e6e1d8"/>
+    <rect x="740" y="630" width="170" height="18" rx="6" fill="#cfc9bf"/>
+    <rect x="920" y="640" width="40" height="40" rx="4" fill="#3b2f27"/>
+  </g>
+
+  <!-- wardrobe in small bedroom nook -->
+  <rect x="720" y="400" width="300" height="40" rx="4" fill="#4a3b31"/>
+
+  <!-- room labels -->
+  <g font-family="Inter, system-ui, sans-serif" font-size="16" fill="rgba(255,255,255,0.55)" letter-spacing="2">
+    <text x="190" y="135">LIVING ROOM</text>
+    <text x="730" y="305">OFFICE</text>
+    <text x="190" y="560">FLOOR</text>
+    <text x="730" y="470">WARDROBE</text>
+    <text x="440" y="685">BEDROOM</text>
+  </g>
+</svg>
