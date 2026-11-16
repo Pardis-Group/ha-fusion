@@ -705,6 +705,7 @@
 		}
 		.panel {
 			grid-template-columns: 1fr;
+			grid-template-rows: auto 1fr;
 			border-radius: 0;
 			min-height: 100vh;
 		}
@@ -725,9 +726,14 @@
 			white-space: nowrap;
 		}
 		.bottom {
+			margin-top: 0;
 			flex-direction: row;
 			align-items: center;
 			justify-content: space-between;
+			flex-wrap: wrap;
+		}
+		.status {
+			width: 100%;
 		}
 		.label {
 			display: none;
