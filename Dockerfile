@@ -6,9 +6,11 @@ WORKDIR /app
 COPY . .
 
 # install, build and prune
-RUN npm install --verbose && \
-  npm run build && \
-  npm prune --omit=dev
+# use pnpm with the committed lockfile so builds are reproducible
+RUN corepack enable && corepack prepare pnpm@9 --activate && \
+  pnpm install --frozen-lockfile && \
+  pnpm run build && \
+  pnpm prune --prod
 
 # second stage
 FROM node:22-alpine

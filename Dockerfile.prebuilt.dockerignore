@@ -1,0 +1,6 @@
+.git
+.svelte-kit
+data
+src
+static
+*.log

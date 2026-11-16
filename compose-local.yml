@@ -1,10 +1,12 @@
 # Local build of our fork, runs beside Home Assistant on this server.
-# Rebuild after code changes:
+# Rebuild after code changes (see Dockerfile.prebuilt for the host build step):
 #   docker compose -f compose-local.yml up -d --build
 services:
   ha-fusion:
     container_name: ha-fusion
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt
     image: ha-fusion:local
     volumes:
       - /home/len-ser-01/ha-fusion-data:/app/data
