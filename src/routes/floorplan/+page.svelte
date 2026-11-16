@@ -248,11 +248,13 @@
 				<img class="map" src="{base}/_api/floorplan_image?f={plan.image}" alt="Floor plan" draggable="false" />
 
 				<!-- light spill: a glow on the plan under every light that is on -->
-				{#each plan.pins as p (p.id)}
-					{#if ['light', 'switch'].includes(domain(p.entity_id)) && isOn($states, p.entity_id)}
-						<div class="glow" style:left="{p.x}%" style:top="{p.y}%" style:--c={glowColor($states, p.entity_id)}></div>
-					{/if}
-				{/each}
+				<div class="glows">
+					{#each plan.pins as p (p.id)}
+						{#if ['light', 'switch'].includes(domain(p.entity_id)) && isOn($states, p.entity_id)}
+							<div class="glow" style:left="{p.x}%" style:top="{p.y}%" style:--c={glowColor($states, p.entity_id)}></div>
+						{/if}
+					{/each}
+				</div>
 
 				{#if mode === 'rooms' && !editing}
 					{#each plan.rooms as room (room.name)}
@@ -496,19 +498,25 @@
 		position: relative;
 		align-self: center;
 		justify-self: center;
-		width: 100%;
-		max-height: calc(100vh - 170px);
-		aspect-ratio: 3 / 2;
+		width: fit-content;
+		max-width: 100%;
 		user-select: none;
 		touch-action: none;
 	}
 
 	.map {
+		display: block;
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: calc(100vh - 170px);
+		pointer-events: none;
+	}
+
+	.glows {
 		position: absolute;
 		inset: 0;
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
+		overflow: hidden;
 		pointer-events: none;
 	}
 
