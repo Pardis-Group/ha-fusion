@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { configuration, states, connection, connected } from '$lib/Stores';
+	import { configuration, states, connection, connected, translation, selectedLanguage } from '$lib/Stores';
+	import { openModal } from 'svelte-modals';
+	import Theme from '$lib/Components/Theme.svelte';
 	import { authentication } from '$lib/Socket';
 	import { callService } from 'home-assistant-js-websocket';
 	import { browser } from '$app/environment';
@@ -8,9 +10,11 @@
 	import { icons, iconFor } from '$lib/Floorplan/icons';
 	import type { Floorplan, Pin } from '$lib/Floorplan/types';
 
-	export let data: { configuration: any; floorplan: Floorplan };
+	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any };
 
 	$configuration = data.configuration;
+	$translation = data.translations;
+	$selectedLanguage = 'en';
 	let plan: Floorplan = structuredClone(data.floorplan);
 
 	/* ---------- connection (same flow as the main page) ---------- */
@@ -81,11 +85,65 @@
 	}
 
 	function toggle(p: Pin) {
+		// a long-press already opened the details; don't also toggle
+		if (longPressed) {
+			longPressed = false;
+			return;
+		}
 		if (editing || !$connection) return;
 		const d = domain(p.entity_id);
 		if (['light', 'switch', 'fan', 'input_boolean', 'cover', 'media_player'].includes(d)) {
 			callService($connection, 'homeassistant', 'toggle', { entity_id: p.entity_id });
 		}
+	}
+
+	/** right-click / long-press: open Fusion's detail modal for the entity (colour, brightness, ...) */
+	function openDetails(p: Pin) {
+		if (editing) return;
+		const sel = { entity_id: p.entity_id, name: p.name };
+		switch (domain(p.entity_id)) {
+			case 'light':
+				openModal(() => import('$lib/Modal/LightModal.svelte'), { sel });
+				break;
+			case 'switch':
+			case 'input_boolean':
+				openModal(() => import('$lib/Modal/SwitchModal.svelte'), { sel });
+				break;
+			case 'media_player':
+				openModal(() => import('$lib/Modal/MediaPlayer.svelte'), { selected: sel });
+				break;
+			case 'climate':
+				openModal(() => import('$lib/Modal/ClimateModal.svelte'), { sel });
+				break;
+			case 'fan':
+				openModal(() => import('$lib/Modal/FanModal.svelte'), { selected: sel });
+				break;
+			case 'cover':
+				openModal(() => import('$lib/Modal/CoverModal.svelte'), { selected: sel });
+				break;
+			case 'lock':
+				openModal(() => import('$lib/Modal/LockModal.svelte'), { sel });
+				break;
+			case 'vacuum':
+				openModal(() => import('$lib/Modal/VacuumModal.svelte'), { sel });
+				break;
+			default:
+				openModal(() => import('$lib/Modal/SensorModal.svelte'), { sel });
+		}
+	}
+
+	let pressTimer: ReturnType<typeof setTimeout> | undefined;
+	let longPressed = false;
+	function pressStart(p: Pin) {
+		clearTimeout(pressTimer);
+		longPressed = false;
+		pressTimer = setTimeout(() => {
+			longPressed = true;
+			openDetails(p);
+		}, 550);
+	}
+	function pressEnd() {
+		clearTimeout(pressTimer);
 	}
 
 	function roomPins(room: string) {
@@ -190,6 +248,8 @@
 	<title>Home</title>
 </svelte:head>
 
+<Theme initial={data.theme} />
+
 <div class="frame">
 	<div class="panel" class:editing>
 		<!-- sidebar -->
@@ -282,7 +342,13 @@
 						style:top="{p.y}%"
 						title="{nameOf($states, p)}{isUnavailable($states, p.entity_id) ? ' · unavailable' : ''}"
 						on:click={() => toggle(p)}
-						on:pointerdown={(e) => startDrag(e, p)}
+						on:contextmenu|preventDefault={() => openDetails(p)}
+						on:pointerdown={(e) => {
+							startDrag(e, p);
+							if (e.pointerType === 'touch') pressStart(p);
+						}}
+						on:pointerup={pressEnd}
+						on:pointerleave={pressEnd}
 					>
 						<svg viewBox="0 0 24 24"><path d={iconFor(p.entity_id)} /></svg>
 						<span class="pin-name">{nameOf($states, p)}</span>
@@ -317,6 +383,20 @@
 <style>
 	:global(body) {
 		background: #e9e7e2 !important;
+	}
+
+	/* Fusion's detail modals: match the dark panel instead of the theme's photo background.
+	   :root:root outranks the :root rule the Theme component injects. */
+	:global(:root:root) {
+		--theme-background-image: none;
+		--theme-modal-background-color-modal: rgba(38, 39, 43, 0.97);
+		--theme-modal-background-color: rgba(255, 255, 255, 0.06);
+		--theme-app-color: #26272b;
+	}
+	:global(div.backdrop) {
+		background-color: rgba(18, 18, 20, 0.55) !important;
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
 	}
 
 	.frame {
@@ -522,9 +602,10 @@
 
 	.glow {
 		position: absolute;
-		width: 22%;
+		width: 15%;
 		aspect-ratio: 1;
-		transform: translate(-50%, -50%);
+		/* squash to match the floor's foreshortening in the generated plan (sin of the view elevation) */
+		transform: translate(-50%, -50%) scaleY(0.64);
 		border-radius: 50%;
 		background: radial-gradient(circle, var(--c) 0%, transparent 65%);
 		opacity: 0.45;
@@ -536,6 +617,7 @@
 	.pin {
 		position: absolute;
 		transform: translate(-50%, -50%);
+		-webkit-touch-callout: none;
 		width: 40px;
 		height: 40px;
 		border-radius: 50%;

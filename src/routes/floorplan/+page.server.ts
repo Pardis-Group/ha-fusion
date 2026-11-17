@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises';
+import { dev } from '$app/environment';
 import yaml from 'js-yaml';
 import type { Configuration } from '$lib/Types';
 import type { Floorplan } from '$lib/Floorplan/types';
@@ -14,11 +15,20 @@ async function loadYaml(file: string) {
 	}
 }
 
-export async function load({ request }): Promise<{ configuration: Configuration; floorplan: Floorplan }> {
-	const [configuration, floorplan] = await Promise.all([
+export async function load({ request }): Promise<{
+	configuration: Configuration;
+	floorplan: Floorplan;
+	theme: any;
+	translations: any;
+}> {
+	const dir = dev ? './static' : './build/client';
+	const [configuration, floorplan, dashboard, en] = await Promise.all([
 		loadYaml('./data/configuration.yaml'),
-		loadYaml('./data/floorplan.yaml')
+		loadYaml('./data/floorplan.yaml'),
+		loadYaml('./data/dashboard.yaml'),
+		readFile(`${dir}/translations/en.json`, 'utf8').then(JSON.parse).catch(() => ({}))
 	]);
+	const theme = await loadYaml(`${dir}/themes/${dashboard.theme || 'godis'}.yaml`);
 
 	configuration.hassUrl = process.env.HASS_URL || request.headers.get('X-Proxy-Target');
 
@@ -27,5 +37,5 @@ export async function load({ request }): Promise<{ configuration: Configuration;
 	floorplan.rooms = floorplan.rooms || [];
 	floorplan.people = floorplan.people || [];
 
-	return { configuration, floorplan };
+	return { configuration, floorplan, theme, translations: en };
 }
