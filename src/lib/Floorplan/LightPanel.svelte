@@ -36,6 +36,10 @@
 		setSleepTimer,
 		cancelSleepTimer
 	} from './effects';
+	import { modeIcons } from './modeIcons';
+
+	/** tiles light enough to need a dark glyph */
+	const darkInk = new Set(['reading', 'focus', 'energize']);
 
 	export let isOpen: boolean;
 	export let entities: string[];
@@ -245,7 +249,11 @@
 
 				{#if running}
 					<div class="effect-box">
-						<span class="tile small playing" style:background={runningMode?.swatch}></span>
+						<span class="tile small playing" style:background={runningMode?.swatch}>
+							{#if runningMode && modeIcons[runningMode.id]}
+								<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">{@html modeIcons[runningMode.id]}</svg>
+							{/if}
+						</span>
 						<span class="label">{runningMode?.name} is playing</span>
 						<button class="stop" on:click={() => stopEffect($connection, entities)}>Stop</button>
 					</div>
@@ -297,7 +305,13 @@
 				<div class="grid">
 					{#each staticModes as m}
 						<button class="mode" class:selected={picked === m.id && !running} on:click={() => pick(m)}>
-							<span class="tile" style:background={m.swatch}></span>
+							<span class="tile" style:background={m.swatch}>
+								{#if modeIcons[m.id]}
+									<svg class="glyph" class:ink={darkInk.has(m.id)} viewBox="0 0 24 24" aria-hidden="true"
+										>{@html modeIcons[m.id]}</svg
+									>
+								{/if}
+							</span>
 							<span class="name">{m.name}</span>
 						</button>
 					{/each}
@@ -361,7 +375,13 @@
 								disabled={!$effectsAvailable}
 								on:click={() => pick(m)}
 							>
-								<span class="tile" class:playing={running?.mode === m.id} style:background={m.swatch}></span>
+								<span class="tile" class:playing={running?.mode === m.id} style:background={m.swatch}>
+									{#if modeIcons[m.id]}
+										<svg class="glyph" class:ink={darkInk.has(m.id)} viewBox="0 0 24 24" aria-hidden="true"
+											>{@html modeIcons[m.id]}</svg
+										>
+									{/if}
+								</span>
 								<span class="name">{m.name}</span>
 							</button>
 						{/each}
@@ -669,13 +689,57 @@
 		box-shadow: inset 0 0 0 2px #ffb86b;
 	}
 	.tile {
-		width: 3rem;
-		height: 3rem;
-		border-radius: 0.8rem;
-		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 3.4rem;
+		height: 3.4rem;
+		border-radius: 0.95rem;
+		overflow: hidden;
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+			0 4px 12px -4px rgba(0, 0, 0, 0.55);
+	}
+	/* soft gloss across the top */
+	.tile::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(160deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 48%);
+		pointer-events: none;
+	}
+	.glyph {
+		position: relative;
+		z-index: 1;
+		width: 1.85rem;
+		height: 1.85rem;
+		color: #ffffff;
+		filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.45));
+	}
+	.glyph.ink {
+		color: #4a3b28;
+		filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.6));
+	}
+	.tile.small .glyph {
+		width: 1.15rem;
+		height: 1.15rem;
+	}
+	.mode:hover .glyph {
+		transform: scale(1.08);
+	}
+	.glyph {
+		transition: transform 150ms ease;
 	}
 	.tile.playing {
 		animation: shimmer 4s linear infinite;
+	}
+	.tile.playing .glyph {
+		animation: bob 1.6s ease-in-out infinite;
+	}
+	@keyframes bob {
+		50% {
+			transform: translateY(-2px) scale(1.06);
+		}
 	}
 	.name {
 		font-size: 0.78rem;
@@ -696,7 +760,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.tile.playing {
+		.tile.playing,
+		.tile.playing .glyph {
 			animation: none;
 		}
 	}

@@ -128,7 +128,7 @@ export const dynamicModes: DynamicMode[] = [
 		id: 'candycane', name: 'Candy cane', kind: 'dynamic', group: 'holiday',
 		palette: [[255, 0, 20], [255, 225, 215]], order: 'cycle',
 		hold: 1600, fade: 900, frame: 600, brightness: [85, 95], dynamics: 'steady',
-		swatch: 'repeating-linear-gradient(135deg, #e0001a 0 8px, #fff 8px 16px)'
+		swatch: 'linear-gradient(135deg, #ff3b4f, #c4001a 60%, #8a0014)'
 	},
 	{
 		id: 'halloween', name: 'Halloween', kind: 'dynamic', group: 'holiday',
