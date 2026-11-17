@@ -94,12 +94,38 @@ def cyl(cx, cy, r, h, color, z0=0.0, shadow=True):
 def pts(points):
     return " ".join(f"{px:.1f},{py:.1f}" for px, py in points)
 
+def custom(x, y, w, d, h, draw, z0=0.0):
+    """an object drawn by `draw()`; the box is only used for depth sorting"""
+    b = Box(x, y, w, d, h, "#000000", z0, "custom", 1.0, False)
+    b.draw = draw
+    boxes.append(b)
+
+def vx_poly(x, pts, fill, extra=""):
+    """polygon in the vertical plane x = const; pts are (y, z)"""
+    return poly([P(x, y, z) for y, z in pts], fill, extra)
+
+def vy_poly(y, pts, fill, extra=""):
+    """polygon in the vertical plane y = const; pts are (x, z)"""
+    return poly([P(x, y, z) for x, z in pts], fill, extra)
+
+def ring(c1, c2, r, n=28):
+    return [(c1 + r * math.cos(2 * math.pi * i / n), c2 + r * math.sin(2 * math.pi * i / n)) for i in range(n)]
+
+def arch(cx, w, z0, h, n=12):
+    """door-shaped opening: straight sides, round top; points are (u, z)"""
+    r = w / 2
+    pts = [(cx - r, z0), (cx + r, z0), (cx + r, z0 + h - r)]
+    pts += [(cx + r * math.cos(math.pi * i / n), z0 + h - r + r * math.sin(math.pi * i / n)) for i in range(1, n)]
+    return pts + [(cx - r, z0 + h - r)]
+
 def poly(points, fill, extra=""):
     return f'<polygon points="{pts(points)}" fill="{fill}" {extra}/>'
 
 def render(b):
     x, y, w, d, z0, z1 = b.x, b.y, b.w, b.d, b.z0, b.z0 + b.h
     op = f'opacity="{b.opacity}"' if b.opacity < 1 else ""
+    if b.kind == "custom":
+        return b.draw()
     if b.kind == "cyl":
         r = b.w / 2
         cx, cy = x + r, y + r
@@ -257,11 +283,32 @@ box(100, 14, 54, 44, 40, WHITE)                             # white nightstand b
 cyl(126, 34, 9, 4, "#a59a88", z0=40)                        # lamp
 cyl(126, 34, 14, 14, "#8c8276", z0=44)
 box(176, 10, 140, 8, 26, "#f7f7f7")                         # radiator under the window
-# big white wardrobe with full mirror doors, to the right of the bed
-box(14, 344, 60, 168, 60, WHITE)
-box(12, 342, 64, 172, 3, "#e4e1da", z0=60)                  # top moulding
-for yy in (346, 402, 458):
-    box(74, yy, 2, 52, 54, "#e6eef2", z0=3, east="url(#mirror)", shadow=False)
+# big white wardrobe, back against the living-room wall; its mirror doors face the bed
+box(14, 452, 236, 60, 60, WHITE)
+box(12, 450, 240, 64, 3, "#e4e1da", z0=60)                  # top moulding
+for xx in (92, 170):
+    box(xx, 452, 1.5, 60, 0.6, "#cfcac1", z0=63)            # door splits
+box(14, 450, 238, 4, 0.8, "#a9c3d0", z0=63)                 # mirror edge along the front
+# cat tree (grey plush, sisal post) left of the TV dresser
+PL, PLL, SIS, HOLE = "#6d6f75", "#86888e", "#d6c8a4", "#2a2b2f"
+box(312, 30, 80, 120, 5, PL)                                # base board
+cyl(322, 46, 5, 81, PL, z0=5)                               # tall back post
+cyl(382, 136, 5, 52, SIS, z0=5)                             # sisal scratching post
+cyl(328, 136, 5, 35, PL, z0=5)                              # front-left post
+box(338, 70, 46, 46, 28, PL, z0=5)                          # lower condo
+custom(338, 116, 46, 0.5, 28, lambda: vy_poly(116.3, arch(361, 22, 8, 21), HOLE), z0=5)
+custom(384, 70, 0.5, 46, 28, lambda: vx_poly(384.3, ring(93, 20, 6), HOLE), z0=5)
+box(334, 66, 54, 54, 3, PLL, z0=33)                         # its roof platform
+box(314, 112, 28, 36, 3, PLL, z0=40)                        # side platform
+cyl(328, 128, 3.5, 3.5, PLL, z0=24)                         # dangling pom-pom
+box(327.5, 127.5, 1, 1, 12, "#d9d6cf", z0=28)
+box(334, 36, 50, 44, 24, PL, z0=58)                         # upper condo
+custom(334, 80, 50, 0.5, 24, lambda: vy_poly(80.3, arch(359, 18, 61, 18), HOLE), z0=58)
+custom(384, 36, 0.5, 44, 24, lambda: vx_poly(384.3, ring(58, 70, 5), HOLE), z0=58)
+box(332, 34, 54, 48, 3, PLL, z0=82)                         # its roof platform
+cyl(382, 136, 12, 3, PLL, z0=57)                            # pad on the sisal post
+cyl(322, 46, 15, 6, PLL, z0=86)                             # top perch
+cyl(322, 46, 10, 1, PL, z0=92)
 # white dresser in front of the bed with the TV and Alexa on it
 box(340, 160, 52, 150, 32, WHITE)
 box(340, 160, 52, 2, 32, "#dcd9d2")                         # drawer line
@@ -277,8 +324,25 @@ box(28, 670, 8, 170, 30, BLACK, z0=40)                      # TV
 box(24, 740, 16, 30, 2, "#2a2b2e", z0=40)
 box(40, 860, 12, 6, 8, "#d9c7a8", z0=40)                    # picture frame on the stand
 cyl(46, 650, 6, 10, "#9aa59a", z0=40)                       # small decor
-cyl(34, 612, 10, 50, "#8b5a35")                             # guitar next to the TV stand
-cyl(34, 612, 4, 30, "#5d3a20", z0=50)
+def guitar(X=34, Y=606, beta=62):
+    """acoustic guitar on a stand, turned so its face looks into the room (towards beta degrees)"""
+    tx, ty = -math.sin(math.radians(beta)), math.cos(math.radians(beta))   # in-plane horizontal axis
+    G = lambda pts, fill: poly([P(X + u * tx, Y + u * ty, z) for u, z in pts], fill)
+    wood, edge, neck, dark = "#c97a3a", "#4a2410", "#5a3218", "#1e140c"
+    out = [G([(-13, 0), (13, 0), (9, 5), (-9, 5)], "#232323")]                                # stand
+    for r_lo, r_up, w, c in ((16.4, 12.8, 11.4, edge), (15, 11.5, 10, wood)):                 # outline, body
+        out.append(G(ring(0, 21, r_lo), c))
+        out.append(G(ring(0, 42, r_up), c))
+        out.append(G([(-w, 23), (w, 23), (w - 1.5, 41), (-w + 1.5, 41)], c))
+    out.append(G(ring(0, 36, 4.2), dark))                                                     # sound hole
+    out.append(G([(-6, 21), (6, 21), (6, 24), (-6, 24)], dark))                               # bridge
+    out.append(G([(-2.6, 50), (2.6, 50), (2.3, 94), (-2.3, 94)], neck))                       # neck
+    out.append(G([(-3.8, 94), (3.8, 94), (3.2, 104), (-3.2, 104)], dark))                     # headstock
+    for du in (-1.4, 0, 1.4):                                                                  # strings
+        a, b = P(X + du * tx, Y + du * ty, 22.5), P(X + du * 0.8 * tx, Y + du * 0.8 * ty, 95)
+        out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="#e9e2d0" stroke-width="0.6"/>')
+    return "\n".join(out)
+custom(18, 596, 32, 18, 104, guitar)                        # acoustic guitar next to the TV stand
 cyl(40, 952, 22, 36, "#d8c48f")                             # gold side table in the corner
 cyl(40, 952, 22, 3, "#f3f2ee", z0=36)
 cyl(40, 952, 7, 18, "#e8e3da", z0=39)                       # vase with dried flowers
@@ -479,7 +543,7 @@ swing_v(572, 650, XS, into=1, hinge="bottom")      # Abstellraum
 swing_h(1020, 1098, YC, into=-1, hinge="right")    # entrance, opens into the corridor
 
 # ---- labels lying on the floor -----------------------------------------------------
-label(96, 448, "SCHLAFZIMMER")
+label(100, 380, "SCHLAFZIMMER")
 label(90, 702, "WOHNZIMMER", 14)
 label(432, 300, "KÜCHE", 12)
 label(674, 196, "WC", 12)
@@ -577,6 +641,44 @@ PINS = [
     ("light.office_eingang_2", "Floor", None, (990, 490)),
     ("light.office_homeoffice", "Office", None, (575, 830)),
 ]
+
+# world rectangles of each room, for the lighting overlay on the page
+GEOM = {
+    "Bedroom": [(X0, Y0, X1, YB)], "Living Room": [(X0, YB, X1, Y4)],
+    "Kitchen": [(X1, YBAL, X2, YK)], "WC": [(X2, YBAL, X3, YK)], "Balcony": [(X1, Y0, X3, YBAL)],
+    "Floor": [(X1, YK, X3, YC), (X1, YC, XS, YF), (X3, YK, X4, YC)],
+    "Storage": [(XS, YC, X3, YF)], "Office": [(X1, YF, X3, Y4)],
+}
+
+def hull(points):
+    pts = sorted(set((round(x, 1), round(y, 1)) for x, y in points))
+    def cross(o, a, b): return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0: lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0: upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+if "--geometry" in sys.argv:
+    import json
+    path = sys.argv[sys.argv.index("--geometry") + 1]
+    rooms = {}
+    for name, rects in GEOM.items():
+        # what you see of the room: its floor plus the inside of the north and west walls
+        # (the walls facing the camera); the south/east walls belong to the next room
+        polys = []
+        for x1, y1, x2, y2 in rects:
+            w = 5  # half a wall
+            x1, y1, x2, y2 = x1 + w, y1 + w, x2 - w, y2 - w
+            pts = [P(x1, y1, WH), P(x2, y1, WH), P(x2, y1, 0), P(x2, y2, 0), P(x1, y2, 0), P(x1, y2, WH)]
+            polys.append([[round(px, 1), round(py, 1)] for px, py in pts])
+        rooms[name] = polys
+    with open(path, "w") as f:
+        json.dump({"width": W, "height": H, "rooms": rooms}, f)
+    print(f"wrote {path}", file=sys.stderr)
 
 if "--yaml" in sys.argv:
     import yaml

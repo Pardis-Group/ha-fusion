@@ -11,7 +11,9 @@
 	import type { Floorplan, Pin } from '$lib/Floorplan/types';
 	import { activeEffects, refreshEffects } from '$lib/Floorplan/effects';
 
-	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any };
+	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any; geometry: Geometry | null };
+
+	type Geometry = { width: number; height: number; rooms: Record<string, number[][][]> };
 
 	$configuration = data.configuration;
 	$translation = data.translations;
@@ -78,12 +80,6 @@
 	const isOn = (st: any, id: string) => onStates.includes(st?.[id]?.state);
 	const isUnavailable = (st: any, id: string) => ['unavailable', 'unknown', undefined].includes(st?.[id]?.state);
 	const nameOf = (st: any, p: Pin) => p.name || st?.[p.entity_id]?.attributes?.friendly_name || p.entity_id;
-
-	/** warm light colour for the glow, from the light's rgb_color when it has one */
-	function glowColor(st: any, id: string) {
-		const rgb = st?.[id]?.attributes?.rgb_color;
-		return rgb ? `rgb(${rgb.join(',')})` : 'rgb(255, 196, 120)';
-	}
 
 	function toggle(p: Pin) {
 		// a long-press already opened the details; don't also toggle
@@ -160,6 +156,64 @@
 			entity_id: pins.map((p) => p.entity_id)
 		});
 	}
+
+	/* ---------- live room lighting on the plan ----------
+	 * Rooms whose lights are all off go dark; lit rooms take the bulb's real colour
+	 * and brightness, with a glow around each lamp kept inside the room's walls. */
+	const geo = data.geometry;
+	type RoomLight = {
+		name: string;
+		slug: string;
+		points: string[];
+		kind: 'none' | 'dark' | 'lit';
+		tint: string;
+		strength: number;
+		radius: number;
+		lamps: { id: number; x: number; y: number; color: string; level: number }[];
+	};
+	const DEFAULT_RGB = [255, 196, 120];
+	const rgbCss = (c: number[]) => `rgb(${c.map((v) => Math.round(v)).join(',')})`;
+
+	$: lighting = geo
+		? Object.entries(geo.rooms).map(([name, polys]): RoomLight => {
+				const xs = polys.flat().map((p) => p[0]);
+				const ys = polys.flat().map((p) => p[1]);
+				const base = {
+					name,
+					slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+					points: polys.map((poly) => poly.map((p) => p.join(',')).join(' ')),
+					radius: Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.55,
+					tint: '#ffffff',
+					strength: 0,
+					lamps: [] as RoomLight['lamps']
+				};
+				const lamps = plan.pins.filter((p) => p.room === name && domain(p.entity_id) === 'light');
+				if (!lamps.length) return { ...base, kind: 'none' };
+				const on = lamps.filter((p) => $states?.[p.entity_id]?.state === 'on');
+				if (!on.length) return { ...base, kind: 'dark', tint: '#363d5c', strength: 0.6 };
+				const lit = on.map((p) => {
+					const a = $states[p.entity_id].attributes;
+					return {
+						id: p.id,
+						x: (p.x / 100) * geo.width,
+						y: (p.y / 100) * geo.height,
+						rgb: (a?.rgb_color as number[]) || DEFAULT_RGB,
+						level: (a?.brightness ?? 255) / 255
+					};
+				});
+				const level = lit.reduce((s, l) => s + l.level, 0) / lit.length;
+				const avg = [0, 1, 2].map((i) => lit.reduce((s, l) => s + l.rgb[i], 0) / lit.length);
+				// multiply tint: the bulb colour, darker when dimmed
+				const shade = 0.55 + 0.45 * level;
+				return {
+					...base,
+					kind: 'lit',
+					tint: rgbCss(avg.map((v) => v * shade)),
+					strength: 0.5,
+					lamps: lit.map((l) => ({ id: l.id, x: l.x, y: l.y, color: rgbCss(l.rgb), level: l.level }))
+				};
+			})
+		: [];
 
 	/* ---------- light panel: one light, a room, or the whole flat ---------- */
 	function openLights(entities: string[], title: string) {
@@ -343,14 +397,46 @@
 			>
 				<img class="map" src="{base}/_api/floorplan_image?f={plan.image}" alt="Floor plan" draggable="false" />
 
-				<!-- light spill: a glow on the plan under every light that is on -->
-				<div class="glows">
-					{#each plan.pins as p (p.id)}
-						{#if ['light', 'switch'].includes(domain(p.entity_id)) && isOn($states, p.entity_id)}
-							<div class="glow" style:left="{p.x}%" style:top="{p.y}%" style:--c={glowColor($states, p.entity_id)}></div>
-						{/if}
-					{/each}
-				</div>
+				{#if geo}
+					<!-- room lighting: darken rooms that are off, tint lit rooms with the bulb colour -->
+					<svg class="shade" viewBox="0 0 {geo.width} {geo.height}" preserveAspectRatio="none" aria-hidden="true">
+						{#each lighting as r (r.name)}
+							<g class="room-shade" style:opacity={r.kind === 'none' ? 0 : r.strength}>
+								{#each r.points as pts}
+									<polygon points={pts} style:fill={r.tint} />
+								{/each}
+							</g>
+						{/each}
+					</svg>
+					<!-- glow around each lamp that is on, kept inside its room -->
+					<svg class="light" viewBox="0 0 {geo.width} {geo.height}" preserveAspectRatio="none" aria-hidden="true">
+						<defs>
+							{#each lighting as r (r.name)}
+								<clipPath id="room-{r.slug}">
+									{#each r.points as pts}
+										<polygon points={pts} />
+									{/each}
+								</clipPath>
+							{/each}
+							{#each lighting as r (r.name)}
+								{#each r.lamps as l (l.id)}
+									<radialGradient id="lamp-{l.id}">
+										<stop offset="0" style:stop-color={l.color} style:stop-opacity={0.85 * l.level} />
+										<stop offset="0.45" style:stop-color={l.color} style:stop-opacity={0.35 * l.level} />
+										<stop offset="1" style:stop-color={l.color} style:stop-opacity="0" />
+									</radialGradient>
+								{/each}
+							{/each}
+						</defs>
+						{#each lighting as r (r.name)}
+							<g clip-path="url(#room-{r.slug})">
+								{#each r.lamps as l (l.id)}
+									<ellipse class="lamp-glow" cx={l.x} cy={l.y} rx={r.radius} ry={r.radius * 0.75} fill="url(#lamp-{l.id})" />
+								{/each}
+							</g>
+						{/each}
+					</svg>
+				{/if}
 
 				{#if mode === 'rooms' && !editing}
 					{#each plan.rooms as room (room.name)}
@@ -626,6 +712,7 @@
 
 	.plan {
 		position: relative;
+		isolation: isolate;
 		align-self: center;
 		justify-self: center;
 		width: fit-content;
@@ -643,25 +730,30 @@
 		pointer-events: none;
 	}
 
-	.glows {
+	.shade,
+	.light {
 		position: absolute;
 		inset: 0;
-		overflow: hidden;
+		width: 100%;
+		height: 100%;
 		pointer-events: none;
 	}
-
-	.glow {
-		position: absolute;
-		width: 15%;
-		aspect-ratio: 1;
-		/* squash to match the floor's foreshortening in the generated plan (sin of the view elevation) */
-		transform: translate(-50%, -50%) scaleY(0.64);
-		border-radius: 50%;
-		background: radial-gradient(circle, var(--c) 0%, transparent 65%);
-		opacity: 0.45;
+	.shade {
+		mix-blend-mode: multiply;
+	}
+	.light {
 		mix-blend-mode: screen;
-		pointer-events: none;
-		transition: opacity 400ms ease;
+	}
+	.room-shade {
+		transition: opacity 900ms ease;
+	}
+	.room-shade polygon {
+		transition: fill 900ms ease;
+	}
+	.light stop {
+		transition:
+			stop-color 900ms ease,
+			stop-opacity 900ms ease;
 	}
 
 	.pin {

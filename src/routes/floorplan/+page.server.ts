@@ -20,13 +20,16 @@ export async function load({ request }): Promise<{
 	floorplan: Floorplan;
 	theme: any;
 	translations: any;
+	geometry: any;
 }> {
 	const dir = dev ? './static' : './build/client';
-	const [configuration, floorplan, dashboard, en] = await Promise.all([
+	const [configuration, floorplan, dashboard, en, geometry] = await Promise.all([
 		loadYaml('./data/configuration.yaml'),
 		loadYaml('./data/floorplan.yaml'),
 		loadYaml('./data/dashboard.yaml'),
-		readFile(`${dir}/translations/en.json`, 'utf8').then(JSON.parse).catch(() => ({}))
+		readFile(`${dir}/translations/en.json`, 'utf8').then(JSON.parse).catch(() => ({})),
+		// room outlines written by scripts/floorplan.py --geometry, used to light up rooms on the plan
+		readFile('./data/floorplan.geometry.json', 'utf8').then(JSON.parse).catch(() => null)
 	]);
 	const theme = await loadYaml(`${dir}/themes/${dashboard.theme || 'godis'}.yaml`);
 
@@ -37,5 +40,5 @@ export async function load({ request }): Promise<{
 	floorplan.rooms = floorplan.rooms || [];
 	floorplan.people = floorplan.people || [];
 
-	return { configuration, floorplan, theme, translations: en };
+	return { configuration, floorplan, theme, translations: en, geometry };
 }
