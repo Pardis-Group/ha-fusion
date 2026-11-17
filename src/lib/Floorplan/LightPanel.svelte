@@ -15,6 +15,9 @@
 		effectGroups,
 		swatches,
 		defaultOptions,
+		speedSteps,
+		fadeSteps,
+		fadeNames,
 		type LightMode,
 		type RGB,
 		type EffectOptions
@@ -68,14 +71,31 @@
 				? `On · ${Math.round((ref?.attributes?.brightness ?? 0) / 2.55)}%`
 				: 'Off';
 
-	/* ---------- effect options ---------- */
-	let opts: EffectOptions = { ...defaultOptions };
-	$: if (running) opts = { speed: running.speed, sync: running.sync, dim: running.dim };
+	/* ---------- effect settings: used for the next effect, applied live to a running one ---------- */
+	const PREFS = 'floorplan.effect-settings';
+	function loadPrefs(): EffectOptions {
+		try {
+			return { ...defaultOptions, ...JSON.parse(localStorage.getItem(PREFS) || '{}'), dim: 1 };
+		} catch {
+			return { ...defaultOptions };
+		}
+	}
+	let opts: EffectOptions = loadPrefs();
+	$: if (running) opts = { speed: running.speed, fade: running.fade ?? 1, sync: running.sync, dim: running.dim };
 
-	async function restartEffect(changes: Partial<EffectOptions>) {
-		if (!running) return;
+	const nearest = (steps: number[], v: number) =>
+		steps.reduce((best, s, i) => (Math.abs(s - v) < Math.abs(steps[best] - v) ? i : best), 0);
+	$: speedIndex = nearest(speedSteps, opts.speed);
+	$: fadeIndex = nearest(fadeSteps, opts.fade);
+
+	async function changeSettings(changes: Partial<EffectOptions>) {
 		opts = { ...opts, ...changes };
-		await startEffect($connection, running.mode, entities, opts).catch((e) => console.error(e));
+		try {
+			localStorage.setItem(PREFS, JSON.stringify({ speed: opts.speed, fade: opts.fade, sync: opts.sync }));
+		} catch {
+			/* private mode: settings just aren't remembered */
+		}
+		if (running) await startEffect($connection, running.mode, entities, opts).catch((e) => console.error(e));
 	}
 
 	/* ---------- brightness and temperature, synced from the light unless the user is dragging ---------- */
@@ -101,7 +121,7 @@
 
 	async function setBrightness() {
 		holdB = false;
-		if (running) return restartEffect({ dim: Math.max(0.05, brightness / 100) });
+		if (running) return changeSettings({ dim: Math.max(0.05, brightness / 100) });
 		clearStatic(entities);
 		turnOn($connection, $states, entities, { brightness_pct: brightness }, 0.4);
 	}
@@ -175,7 +195,8 @@
 
 	const css = (c: RGB) => `rgb(${c.join(',')})`;
 	$: lampColor = ref?.state === 'on' && ref.attributes?.rgb_color ? css(ref.attributes.rgb_color) : 'rgb(255, 196, 120)';
-	const speedLabel = (s: number) => (s <= 0.5 ? 'Very slow' : s < 1 ? 'Slow' : s === 1 ? 'Normal' : s <= 1.5 ? 'Fast' : 'Very fast');
+	const speedLabel = (s: number) =>
+		s <= 0.25 ? 'Very slow' : s < 1 ? 'Slow' : s === 1 ? 'Normal' : s <= 2 ? 'Fast' : 'Very fast';
 </script>
 
 {#if isOpen}
@@ -223,32 +244,10 @@
 				/>
 
 				{#if running}
-					<!-- options of the running effect -->
 					<div class="effect-box">
-						<div class="row">
-							<span class="label">Speed</span>
-							<span class="value">{speedLabel(opts.speed)}</span>
-						</div>
-						<input
-							class="range speed"
-							type="range"
-							min="0.5"
-							max="2"
-							step="0.25"
-							value={opts.speed}
-							on:change={(e) => restartEffect({ speed: Number(e.currentTarget.value) })}
-							aria-label="Effect speed"
-						/>
-						{#if many}
-							<label class="sync">
-								<span>
-									<span class="label">Same colour on every light</span>
-									<span class="hint">Off: each light runs a step behind the next, like a wave</span>
-								</span>
-								<Toggle checked={opts.sync} on:change={() => restartEffect({ sync: !opts.sync })} />
-							</label>
-						{/if}
-						<button class="stop" on:click={() => stopEffect($connection, entities)}>Stop effect</button>
+						<span class="tile small playing" style:background={runningMode?.swatch}></span>
+						<span class="label">{runningMode?.name} is playing</span>
+						<button class="stop" on:click={() => stopEffect($connection, entities)}>Stop</button>
 					</div>
 				{/if}
 
@@ -302,6 +301,50 @@
 							<span class="name">{m.name}</span>
 						</button>
 					{/each}
+				</div>
+
+				<!-- effect settings -->
+				<div class="section">Effect settings</div>
+				<div class="settings">
+					<div class="row">
+						<span class="label">Speed</span>
+						<span class="value">{speedLabel(speedSteps[speedIndex])} · {speedSteps[speedIndex]}×</span>
+					</div>
+					<input
+						class="range steps"
+						style:--n={speedSteps.length - 1}
+						type="range"
+						min="0"
+						max={speedSteps.length - 1}
+						step="1"
+						value={speedIndex}
+						on:change={(e) => changeSettings({ speed: speedSteps[Number(e.currentTarget.value)] })}
+						aria-label="Effect speed"
+					/>
+					<div class="row">
+						<span class="label">Colour change</span>
+						<span class="value">{fadeNames[fadeIndex]}</span>
+					</div>
+					<input
+						class="range steps"
+						style:--n={fadeSteps.length - 1}
+						type="range"
+						min="0"
+						max={fadeSteps.length - 1}
+						step="1"
+						value={fadeIndex}
+						on:change={(e) => changeSettings({ fade: fadeSteps[Number(e.currentTarget.value)] })}
+						aria-label="How colours change: instant to very smooth"
+					/>
+					{#if many}
+						<label class="sync">
+							<span>
+								<span class="label">Same colour on every light</span>
+								<span class="hint">Off: each light runs a step behind the next, like a wave</span>
+							</span>
+							<Toggle checked={opts.sync} on:change={() => changeSettings({ sync: !opts.sync })} />
+						</label>
+					{/if}
 				</div>
 
 				<!-- effects -->
@@ -441,10 +484,6 @@
 	.range.kelvin {
 		background: linear-gradient(90deg, #ff9b3d, #ffd9a8 35%, #fff6ec 60%, #cfe2ff);
 	}
-	.range.speed {
-		height: 2rem;
-		background: linear-gradient(90deg, #2c2d33, #4b4d55);
-	}
 	.range::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		width: 1.2rem;
@@ -453,9 +492,6 @@
 		background: #ffffff;
 		box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 		border: 2px solid rgba(0, 0, 0, 0.15);
-	}
-	.range.speed::-webkit-slider-thumb {
-		height: 1.6rem;
 	}
 	.range::-moz-range-thumb {
 		width: 1.2rem;
@@ -471,12 +507,41 @@
 
 	.effect-box {
 		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
-		padding: 0.4rem 0.9rem 0.9rem;
+		align-items: center;
+		gap: 0.8rem;
+		padding: 0.6rem 0.8rem;
 		border-radius: 1rem;
 		background: rgba(255, 184, 107, 0.08);
 		box-shadow: inset 0 0 0 1px rgba(255, 184, 107, 0.25);
+	}
+	.effect-box .label {
+		margin-right: auto;
+	}
+	.tile.small {
+		width: 2rem;
+		height: 2rem;
+		border-radius: 0.55rem;
+		flex-shrink: 0;
+	}
+	.settings {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.2rem 0.9rem 0.9rem;
+		border-radius: 1rem;
+		background: rgba(255, 255, 255, 0.04);
+	}
+	.range.steps {
+		height: 2rem;
+		/* one tick per step */
+		background: repeating-linear-gradient(
+			90deg,
+			#2c2d33 0 calc(100% / var(--n, 7) - 2px),
+			#3a3b42 calc(100% / var(--n, 7) - 2px) calc(100% / var(--n, 7))
+		);
+	}
+	.range.steps::-webkit-slider-thumb {
+		height: 1.6rem;
 	}
 	.sync {
 		display: flex;

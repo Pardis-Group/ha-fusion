@@ -390,6 +390,7 @@
 		<main>
 			<div
 				class="plan"
+				style:--ar={geo ? geo.width / geo.height : undefined}
 				bind:this={planEl}
 				on:pointermove={moveDrag}
 				on:pointerup={endDrag}
@@ -539,17 +540,18 @@
 		min-height: 100vh;
 		display: grid;
 		place-items: center;
-		padding: 24px;
+		padding: 14px;
 		box-sizing: border-box;
 		font-family: 'Inter Variable', Inter, system-ui, sans-serif;
 		color: #e8e6e1;
 	}
 
 	.panel {
-		width: min(100%, 1500px);
-		min-height: min(calc(100vh - 48px), 900px);
+		width: 100%;
+		height: calc(100vh - 28px);
+		min-height: 560px;
 		display: grid;
-		grid-template-columns: 260px 1fr;
+		grid-template-columns: 290px 1fr;
 		background: #26272b;
 		border-radius: 28px;
 		box-shadow:
@@ -562,13 +564,13 @@
 	aside {
 		display: flex;
 		flex-direction: column;
-		padding: 40px 28px 28px;
-		gap: 36px;
+		padding: 44px 30px 30px;
+		gap: 38px;
 		border-right: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.time {
-		font-size: 56px;
+		font-size: 68px;
 		font-weight: 200;
 		letter-spacing: 0.02em;
 		line-height: 1;
@@ -578,7 +580,7 @@
 
 	.date {
 		margin-top: 10px;
-		font-size: 13px;
+		font-size: 14.5px;
 		color: #8d8d93;
 	}
 
@@ -593,20 +595,20 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 12px 14px;
+		padding: 13px 16px;
 		border: 0;
-		border-radius: 12px;
+		border-radius: 13px;
 		background: transparent;
 		color: #b8b7b3;
 		font: inherit;
-		font-size: 14px;
+		font-size: 15.5px;
 		letter-spacing: 0.03em;
 		cursor: pointer;
 		transition: background 150ms ease, color 150ms ease;
 	}
 	.nav svg {
-		width: 18px;
-		height: 18px;
+		width: 20px;
+		height: 20px;
 		fill: currentColor;
 		opacity: 0.8;
 	}
@@ -704,29 +706,26 @@
 	main {
 		position: relative;
 		display: grid;
-		grid-template-rows: 1fr auto;
-		padding: 28px;
-		gap: 16px;
+		place-items: center;
+		padding: 18px 22px;
 		min-width: 0;
+		min-height: 0;
 	}
 
 	.plan {
 		position: relative;
 		isolation: isolate;
-		align-self: center;
-		justify-self: center;
-		width: fit-content;
-		max-width: 100%;
+		/* as big as the panel allows, keeping the plan's proportions (--ar = width / height) */
+		width: min(100%, calc((100vh - 64px) * var(--ar, 1.25)));
+		aspect-ratio: var(--ar, 1.25);
 		user-select: none;
 		touch-action: none;
 	}
 
 	.map {
 		display: block;
-		width: auto;
-		height: auto;
-		max-width: 100%;
-		max-height: calc(100vh - 170px);
+		width: 100%;
+		height: 100%;
 		pointer-events: none;
 	}
 
@@ -760,8 +759,8 @@
 		position: absolute;
 		transform: translate(-50%, -50%);
 		-webkit-touch-callout: none;
-		width: 40px;
-		height: 40px;
+		width: 46px;
+		height: 46px;
 		border-radius: 50%;
 		border: 0;
 		padding: 0;
@@ -774,8 +773,8 @@
 		transition: transform 150ms ease, box-shadow 200ms ease, background 200ms ease;
 	}
 	.pin svg {
-		width: 18px;
-		height: 18px;
+		width: 21px;
+		height: 21px;
 		fill: currentColor;
 	}
 	.pin:hover {
@@ -903,11 +902,16 @@
 
 	/* ---------- toolbar ---------- */
 	.toolbar {
+		position: absolute;
+		right: 22px;
+		bottom: 18px;
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		flex-wrap: wrap;
-		min-height: 36px;
+		justify-content: flex-end;
+		max-width: calc(100% - 44px);
+		z-index: 2;
 	}
 	.hint {
 		font-size: 12px;
@@ -956,7 +960,15 @@
 			grid-template-columns: 1fr;
 			grid-template-rows: auto 1fr;
 			border-radius: 0;
+			height: auto;
 			min-height: 100vh;
+		}
+		.plan {
+			width: 100%;
+		}
+		.toolbar {
+			position: static;
+			margin-top: 12px;
 		}
 		aside {
 			border-right: 0;

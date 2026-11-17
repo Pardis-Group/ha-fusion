@@ -147,7 +147,8 @@ export function stop(entities: string[]) {
 	}
 }
 
-const sameOptions = (a: EffectOptions, b: EffectOptions) => a.speed === b.speed && a.sync === b.sync && a.dim === b.dim;
+const sameOptions = (a: EffectOptions, b: EffectOptions) =>
+	a.speed === b.speed && a.fade === b.fade && a.sync === b.sync && a.dim === b.dim;
 
 export async function start(modeId: string, entities: string[], options?: Partial<EffectOptions>) {
 	const mode = findMode(modeId);
@@ -156,7 +157,8 @@ export async function start(modeId: string, entities: string[], options?: Partia
 	if (!entities.length) throw new Error('no lights');
 
 	const opts: EffectOptions = {
-		speed: Math.min(3, Math.max(0.25, Number(options?.speed ?? defaultOptions.speed))),
+		speed: Math.min(4, Math.max(0.25, Number(options?.speed ?? defaultOptions.speed))),
+		fade: Math.min(2, Math.max(0, Number(options?.fade ?? defaultOptions.fade))),
 		sync: options?.sync ?? defaultOptions.sync,
 		dim: Math.min(1, Math.max(0.05, Number(options?.dim ?? defaultOptions.dim)))
 	};
@@ -196,6 +198,24 @@ export async function start(modeId: string, entities: string[], options?: Partia
 	frame(run);
 }
 
+/** hold and fade of one step in ms, after the user's speed and transition settings */
+function timing(run: Run) {
+	const { mode, options } = run;
+	const seg = Math.max(200, (mode.hold + mode.fade) / options.speed);
+	const base = mode.hold + mode.fade > 0 ? mode.fade / (mode.hold + mode.fade) : 0;
+	const fade = seg * Math.min(0.95, base * options.fade + (options.fade > 1 ? (options.fade - 1) * 0.35 : 0));
+	return { seg, fade, hold: seg - fade };
+}
+
+/** ms between commands: often enough to follow the effect, never faster than the bulbs like */
+function frameOf(run: Run) {
+	const { mode } = run;
+	if (mode.duration || mode.order === 'hue') return Math.max(400, mode.frame / Math.min(2, run.options.speed));
+	const { seg, fade } = timing(run);
+	const wanted = fade > 0 ? Math.min(mode.frame, fade / 2) : Math.min(mode.frame, seg);
+	return Math.max(400, wanted);
+}
+
 function paletteIndex(run: Run, step: number) {
 	const n = run.mode.palette.length;
 	if (run.mode.order !== 'random') return ((step % n) + n) % n;
@@ -225,9 +245,7 @@ function colourAt(run: Run, t: number, index: number, count: number): RGB {
 		return p.length === 1 ? p[0] : mix(p[i], p[i + 1], k - i);
 	}
 
-	const hold = mode.hold / sp;
-	const fade = mode.fade / sp;
-	const seg = Math.max(1, hold + fade);
+	const { hold, fade, seg } = timing(run);
 	const tt = t + (options.sync ? 0 : index * seg * 0.5 + (index * seg) / Math.max(count, 1));
 	const step = Math.floor(tt / seg);
 	const within = tt - step * seg;
@@ -241,7 +259,7 @@ function colourAt(run: Run, t: number, index: number, count: number): RGB {
 function brightnessAt(run: Run, t: number, index: number): { pct: number; flash: boolean } {
 	const { mode, options } = run;
 	const [lo, hi] = mode.brightness;
-	const seg = Math.max(1, (mode.hold + mode.fade) / options.speed);
+	const { seg } = timing(run);
 	let pct = hi;
 	let flash = false;
 	switch (mode.dynamics) {
@@ -275,7 +293,8 @@ async function frame(run: Run) {
 	const { mode } = run;
 	const now = Date.now();
 	const t = now - run.started;
-	const target = t + mode.frame; // aim where the timeline will be at the next frame
+	const step = frameOf(run);
+	const target = t + step; // aim where the timeline will be at the next frame
 	const entities = [...run.entities];
 
 	// lights someone switched off elsewhere (app, voice, wall switch) leave the effect
@@ -295,8 +314,13 @@ async function frame(run: Run) {
 	const live = run.entities.filter((e) => entities.includes(e));
 
 	const done = mode.duration !== undefined && t >= mode.duration;
-	const fadeFor = (e: string, flash: boolean) =>
-		transitionSupport.get(e) && !flash ? Math.round((mode.dynamics === 'flicker' ? mode.frame * 0.8 : mode.frame * 1.05)) / 1000 : undefined;
+	// bulbs that can fade glide to the next frame; with "Instant" they jump
+	const { fade: fadeMs } = timing(run);
+	const glide = mode.order === 'hue' || mode.duration ? step : Math.min(step, fadeMs);
+	const fadeFor = (e: string, flash: boolean) => {
+		if (!transitionSupport.get(e) || flash || glide < 120) return undefined;
+		return Math.round(mode.dynamics === 'flicker' ? glide * 0.8 : glide * 1.05) / 1000; // seconds
+	};
 
 	// work out each light's next colour, then send as few calls as possible
 	const batches = new Map<string, string[]>();
@@ -324,7 +348,7 @@ async function frame(run: Run) {
 	}
 	if (!runs.has(run.id)) return;
 	const jitter = mode.dynamics === 'flicker' || mode.dynamics === 'flash' ? 0.75 + Math.random() * 0.5 : 1;
-	run.timer = setTimeout(() => frame(run), Math.max(400, mode.frame * jitter));
+	run.timer = setTimeout(() => frame(run), Math.max(400, step * jitter));
 }
 
 /* ---------- sleep timer: dim slowly, then switch off ---------- */

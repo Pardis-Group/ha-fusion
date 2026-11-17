@@ -7,53 +7,53 @@ people:
 - person.gaby
 rooms:
 - name: Bedroom
-  x: 36.6
-  y: 29.6
+  x: 36.2
+  y: 28.8
 - name: Living Room
-  x: 23.2
-  y: 64.0
+  x: 22.3
+  y: 64.6
 - name: Kitchen
-  x: 55.3
-  y: 37.4
+  x: 55.5
+  y: 36.9
 - name: WC
-  x: 68.0
-  y: 44.0
+  x: 68.7
+  y: 43.7
 - name: Balcony
-  x: 68.2
-  y: 26.1
+  x: 68.8
+  y: 25.1
 - name: Floor
-  x: 52.8
-  y: 58.3
+  x: 52.9
+  y: 58.6
 - name: Storage
-  x: 62.1
-  y: 67.4
+  x: 62.5
+  y: 68.1
 - name: Office
-  x: 47.8
-  y: 78.3
+  x: 47.7
+  y: 79.5
 pins:
 - id: 4
   entity_id: light.bedroom_schlafzimmer
   room: Bedroom
-  x: 36.6
-  y: 29.6
+  x: 36.2
+  y: 28.8
 - id: 5
   entity_id: media_player.living_room_firetv_85ae6a591e79459a_television
   room: Living Room
-  x: 11.8
-  y: 59.0
+  x: 10.5
+  y: 59.4
   name: Fire TV
 - id: 2
   entity_id: light.floor_eingang_2
   room: Floor
-  x: 52.8
-  y: 58.3
+  x: 52.9
+  y: 58.6
 - id: 3
   entity_id: light.office_eingang_2
   room: Floor
-  x: 86.6
-  y: 64.5
+  x: 87.9
+  y: 65.1
 - id: 1
   entity_id: light.office_homeoffice
   room: Office
-  x: 48.3
-  y: 76.9
+  x: 48.2
+  y: 78.1

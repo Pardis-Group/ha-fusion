@@ -53,13 +53,20 @@ export type LightMode = StaticMode | DynamicMode;
 export interface EffectOptions {
 	/** 0.5 = half speed, 2 = double speed */
 	speed: number;
+	/** how much of each step is spent blending: 0 = colours jump, 1 = the effect's own feel, 2 = always blending */
+	fade: number;
 	/** true: every light shows the same colour at the same time */
 	sync: boolean;
 	/** brightness multiplier 0.05..1 */
 	dim: number;
 }
 
-export const defaultOptions: EffectOptions = { speed: 1, sync: true, dim: 1 };
+export const defaultOptions: EffectOptions = { speed: 1, fade: 1, sync: true, dim: 1 };
+
+/** steps offered by the panel's sliders */
+export const speedSteps = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+export const fadeSteps = [0, 0.25, 0.6, 1, 1.5, 2];
+export const fadeNames = ['Instant', 'Quick', 'Short', 'Normal', 'Smooth', 'Very smooth'];
 
 const grad = (...c: string[]) => `linear-gradient(135deg, ${c.join(', ')})`;
 

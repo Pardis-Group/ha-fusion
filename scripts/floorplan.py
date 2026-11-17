@@ -30,7 +30,7 @@ import math, sys
 THETA = 20   # rotation around the vertical axis, degrees (0 = straight from the south)
 PHI = 48     # elevation of the camera above the floor, degrees (90 = top-down)
 WH = 52      # wall height (cut), cm
-MARGIN = 40
+MARGIN = 18
 
 CT, ST = math.cos(math.radians(THETA)), math.sin(math.radians(THETA))
 SP, CP = math.sin(math.radians(PHI)), math.cos(math.radians(PHI))
@@ -118,6 +118,81 @@ def arch(cx, w, z0, h, n=12):
     pts += [(cx + r * math.cos(math.pi * i / n), z0 + h - r + r * math.sin(math.pi * i / n)) for i in range(1, n)]
     return pts + [(cx - r, z0 + h - r)]
 
+def face_lines_x(x, y1, y2, z1, z2, step_y, step_z, fill, line):
+    """tiles on a wall face in the plane x = const (seen from the east)"""
+    def draw():
+        out = [vx_poly(x, [(y1, z1), (y2, z1), (y2, z2), (y1, z2)], fill)]
+        y = y1 + step_y
+        while y < y2 - 0.5:
+            a, b = P(x, y, z1), P(x, y, z2)
+            out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{line}" stroke-width="0.6"/>')
+            y += step_y
+        z = z1 + step_z
+        while z < z2 - 0.5:
+            a, b = P(x, y1, z), P(x, y2, z)
+            out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{line}" stroke-width="0.6"/>')
+            z += step_z
+        return "\n".join(out)
+    custom(x, y1, 0.3, y2 - y1, z2 - z1, draw, z0=z1)
+
+def face_lines_y(y, x1, x2, z1, z2, step_x, step_z, fill, line):
+    """tiles on a wall face in the plane y = const (seen from the south)"""
+    def draw():
+        out = [vy_poly(y, [(x1, z1), (x2, z1), (x2, z2), (x1, z2)], fill)]
+        x = x1 + step_x
+        while x < x2 - 0.5:
+            a, b = P(x, y, z1), P(x, y, z2)
+            out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{line}" stroke-width="0.6"/>')
+            x += step_x
+        z = z1 + step_z
+        while z < z2 - 0.5:
+            a, b = P(x1, y, z), P(x2, y, z)
+            out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{line}" stroke-width="0.6"/>')
+            z += step_z
+        return "\n".join(out)
+    custom(x1, y, x2 - x1, 0.3, z2 - z1, draw, z0=z1)
+
+def grain(x, y, w, d, z, along="x", step=6, color="rgba(90,55,25,0.22)"):
+    """wood grain lines on the top of a box"""
+    def draw():
+        out = []
+        if along == "x":
+            k = y + step / 2
+            while k < y + d:
+                a, b = P(x + 2, k, z), P(x + w - 2, k + 0.6, z)
+                out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{color}" stroke-width="0.7"/>')
+                k += step
+        else:
+            k = x + step / 2
+            while k < x + w:
+                a, b = P(k, y + 2, z), P(k + 0.6, y + d - 2, z)
+                out.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" y2="{b[1]:.1f}" stroke="{color}" stroke-width="0.7"/>')
+                k += step
+        return "\n".join(out)
+    custom(x, y, w, d, 0.05, draw, z0=z)
+
+import random as _random
+def plant(cx, cy, pot_r, pot_h, leaf_r, leaf_h, pot="#7a5b45", greens=("#4f7d3e", "#5f8f49", "#6fa557", "#3f6b33"), seed=1, n=26):
+    """potted plant: a pot and a bushy crown of leaves"""
+    cyl(cx, cy, pot_r, pot_h, pot)
+    cyl(cx, cy, pot_r - 1.5, 0.5, "#3b2a1e", z0=pot_h)
+    rnd = _random.Random(seed)
+    leaves = []
+    for _ in range(n):
+        a = rnd.uniform(0, 2 * math.pi)
+        r = leaf_r * math.sqrt(rnd.random()) * 0.8
+        z = pot_h + leaf_h * (0.25 + 0.75 * rnd.random()) * (1 - 0.5 * r / leaf_r)
+        leaves.append((cx + r * math.cos(a), cy + r * math.sin(a), z, rnd.uniform(0.35, 0.6) * leaf_r, rnd.choice(greens)))
+    leaves.sort(key=lambda l: (l[0] + l[1], l[2]))
+    def draw():
+        out = []
+        for lx, ly, lz, size, c in leaves:
+            px, py = P(lx, ly, lz)
+            out.append(f'<ellipse cx="{px:.1f}" cy="{py:.1f}" rx="{size:.1f}" ry="{size * 0.62:.1f}" fill="{c}"/>')
+            out.append(f'<ellipse cx="{px - size * 0.25:.1f}" cy="{py - size * 0.2:.1f}" rx="{size * 0.45:.1f}" ry="{size * 0.25:.1f}" fill="rgba(255,255,255,0.12)"/>')
+        return "\n".join(out)
+    custom(cx - leaf_r, cy - leaf_r, 2 * leaf_r, 2 * leaf_r, leaf_h, draw, z0=pot_h + 0.6)  # above the soil
+
 def poly(points, fill, extra=""):
     return f'<polygon points="{pts(points)}" fill="{fill}" {extra}/>'
 
@@ -194,7 +269,7 @@ def _run(a1, a2, items, make):
     if a2 > cur:
         make(cur, a2, "wall")
 
-def _segment(horizontal, fixed, t):
+def _segment(horizontal, fixed, t, skirt=True):
     def make(a, b, kind):
         L = b - a
         def B(off, length, h, color, z0=0, thick=t, opacity=1.0):
@@ -204,6 +279,11 @@ def _segment(horizontal, fixed, t):
                 box(fixed - thick / 2, a + off, thick, length, h, color, z0, opacity, shadow=False)
         if kind == "wall":
             B(0, L, WH, WALL)
+            if skirt:   # dark grey skirting board on the face that looks into the room
+                if horizontal:
+                    box(a, fixed + t / 2, L, 1.2, 6, "#6f7276", shadow=False)
+                else:
+                    box(fixed + t / 2, a, 1.2, L, 6, "#6f7276", shadow=False)
         elif kind == "door":
             B(0, 4, WH, FRAME); B(L - 4, 4, WH, FRAME)                         # jambs
             B(4, L - 8, 2, "#b7aa98")                                           # threshold
@@ -211,19 +291,22 @@ def _segment(horizontal, fixed, t):
             B(0, L, 20, WALL)                                                   # wall under the window
             B(0, L, 2, "#dcdad5", z0=20, thick=t + 8)                           # sill
             B(0, 3, WH - 22, WHITE, z0=22); B(L - 3, 3, WH - 22, WHITE, z0=22)  # white frame
-            B(3, L - 6, WH - 22, GLASS, z0=22, thick=4, opacity=0.6)            # pane
+            pane = WH - 22
+            B(3, L - 6, pane * 0.55, GLASS, z0=22, thick=4, opacity=0.6)       # pane
+            B(3, L - 6, pane * 0.45, "#3d4048", z0=22 + pane * 0.55, thick=4)   # roller blind, half down
+            B(3, L - 6, 1.5, "#2c2e33", z0=22 + pane * 0.55, thick=5)           # its bottom bar
         elif kind == "glassdoor":
             B(0, 4, WH, WHITE); B(L - 4, 4, WH, WHITE)
             B(4, L - 8, WH, GLASS, thick=4, opacity=0.55)
     return make
 
-def hwall(x1, x2, y, t, doors=(), windows=(), glassdoors=()):
+def hwall(x1, x2, y, t, doors=(), windows=(), glassdoors=(), skirt=True):
     items = [(a, b, "door") for a, b in doors] + [(a, b, "window") for a, b in windows] + [(a, b, "glassdoor") for a, b in glassdoors]
-    _run(x1, x2, items, _segment(True, y, t))
+    _run(x1, x2, items, _segment(True, y, t, skirt))
 
-def vwall(y1, y2, x, t, doors=(), windows=(), glassdoors=()):
+def vwall(y1, y2, x, t, doors=(), windows=(), glassdoors=(), skirt=True):
     items = [(a, b, "door") for a, b in doors] + [(a, b, "window") for a, b in windows] + [(a, b, "glassdoor") for a, b in glassdoors]
-    _run(y1, y2, items, _segment(False, x, t))
+    _run(y1, y2, items, _segment(False, x, t, skirt))
 
 def swing_h(x1, x2, y, into, hinge="left"):
     """open door leaf in a horizontal wall; into=+1 opens to the south, -1 to the north"""
@@ -231,6 +314,8 @@ def swing_h(x1, x2, y, into, hinge="left"):
     hx = x1 + 4 if hinge == "left" else x2 - 4
     tip_closed = x2 - 4 if hinge == "left" else x1 + 4
     box(hx - (0 if hinge == "left" else 4), y if into > 0 else y - L, 4, L, WH - 8, DOOR, shadow=False)
+    tip = y + into * (L - 6)
+    box(hx - (0 if hinge == "left" else 4) - 2.5, min(tip, tip - into * 4), 9, 4, 1.6, "#c9ccd0", z0=21, shadow=False)  # handle
     sweep = (1 if into > 0 else 0) if hinge == "left" else (0 if into > 0 else 1)
     flat.append(f'<path d="M{tip_closed} {y} A{L} {L} 0 0 {sweep} {hx} {y + into * L}" fill="none" '
                 f'stroke="rgba(90,55,30,0.4)" stroke-width="1.5" stroke-dasharray="5 4"/>')
@@ -241,6 +326,8 @@ def swing_v(y1, y2, x, into, hinge="top"):
     hy = y1 + 4 if hinge == "top" else y2 - 4
     tip_closed = y2 - 4 if hinge == "top" else y1 + 4
     box(x if into > 0 else x - L, hy - (0 if hinge == "top" else 4), L, 4, WH - 8, DOOR, shadow=False)
+    tip = x + into * (L - 6)
+    box(min(tip, tip - into * 4), hy - (0 if hinge == "top" else 4) - 2.5, 4, 9, 1.6, "#c9ccd0", z0=21, shadow=False)  # handle
     sweep = (0 if into > 0 else 1) if hinge == "top" else (1 if into > 0 else 0)
     flat.append(f'<path d="M{x} {tip_closed} A{L} {L} 0 0 {sweep} {x + into * L} {hy}" fill="none" '
                 f'stroke="rgba(90,55,30,0.4)" stroke-width="1.5" stroke-dasharray="5 4"/>')
@@ -274,15 +361,18 @@ frect(1030, 470, 60, 30, "#4a3f36", 4)               # door mat
 
 # ---- furniture: Schlafzimmer ---------------------------------------------------------
 box(14, 150, 12, 180, 40, "#2a2c31")                        # tall upholstered headboard
+face_lines_x(26.1, 152, 328, 2, 38, 22, 100, "#30323a", "#1c1d21")       # its stitched channels
 box(26, 156, 214, 168, 18, "#3f4147")                       # bed frame
 box(30, 160, 206, 160, 8, "#55585f", z0=18)                 # mattress
 box(100, 166, 132, 148, 5, "#eeece7", z0=26)                # duvet
+box(200, 164, 34, 152, 6, "#5b5e66", z0=26)                 # folded throw at the foot
 box(36, 168, 46, 66, 7, "#f4f3ef", z0=26)                   # pillows
 box(36, 246, 46, 66, 7, "#2f3035", z0=26)
 box(100, 14, 54, 44, 40, WHITE)                             # white nightstand by the window
 cyl(126, 34, 9, 4, "#a59a88", z0=40)                        # lamp
 cyl(126, 34, 14, 14, "#8c8276", z0=44)
 box(176, 10, 140, 8, 26, "#f7f7f7")                         # radiator under the window
+face_lines_y(18.1, 176, 316, 1, 25, 5, 100, "#f2f2f2", "#d8d8d8")
 # big white wardrobe, back against the living-room wall; its mirror doors face the bed
 box(14, 452, 236, 60, 60, WHITE)
 box(12, 450, 240, 64, 3, "#e4e1da", z0=60)                  # top moulding
@@ -320,7 +410,8 @@ box(350, 168, 3, 18, 24, "#2b2c30", z0=32)                  # tablet on a stand
 
 # ---- furniture: Wohnzimmer (door on the east wall, window on the south wall) ----------
 box(14, 640, 52, 230, 40, OAK)                              # TV stand opposite the door
-box(28, 670, 8, 170, 30, BLACK, z0=40)                      # TV
+grain(14, 640, 52, 230, 40, along="y", step=5)
+box(28, 670, 8, 170, 30, BLACK, z0=40, east="url(#screen)") # TV
 box(24, 740, 16, 30, 2, "#2a2b2e", z0=40)
 box(40, 860, 12, 6, 8, "#d9c7a8", z0=40)                    # picture frame on the stand
 cyl(46, 650, 6, 10, "#9aa59a", z0=40)                       # small decor
@@ -360,8 +451,10 @@ box(316, 690, 70, 18, 14, SOFA_DARK, z0=30)
 box(316, 912, 70, 18, 14, SOFA_DARK, z0=30)
 for yy in (712, 778, 844):
     box(322, yy, 42, 62, 6, "#5a5c63", z0=30)
-box(330, 720, 30, 40, 9, "#d9cfc4", z0=36)                  # patterned pillows
-box(330, 870, 30, 40, 9, "#d9cfc4", z0=36)
+box(330, 720, 30, 40, 9, "#e3dbd2", z0=36)                  # patterned pillows
+custom(330, 720, 30, 40, 0.05, lambda: poly([P(330, 720, 45), P(360, 720, 45), P(360, 760, 45), P(330, 760, 45)], "url(#semis)"), z0=45)
+box(330, 870, 30, 40, 9, "#e3dbd2", z0=36)
+custom(330, 870, 30, 40, 0.05, lambda: poly([P(330, 870, 45), P(360, 870, 45), P(360, 910, 45), P(330, 910, 45)], "url(#semis)"), z0=45)
 box(150, 750, 120, 72, 24, OAK)                             # coffee table
 box(146, 746, 128, 80, 3, "#d4e7ee", z0=24, opacity=0.8)    # glass top
 cyl(196, 780, 5, 22, "#4a1f24", z0=27)                      # wine bottle and glasses
@@ -370,13 +463,13 @@ cyl(226, 790, 4, 14, "#e9eef0", z0=27)
 box(166, 796, 26, 18, 2, "#1e2a44", z0=27)                  # book
 box(236, 800, 22, 10, 2, "#202124", z0=27)                  # remote
 box(130, 570, 150, 78, 36, "#b8a183")                       # dining table by the bedroom wall
+grain(130, 570, 150, 78, 36, along="x", step=6)
 for cx in (150, 205, 260):
     for cy, back in ((548, -1), (668, 1)):
         box(cx - 16, cy - 14, 32, 28, 22, "#3b3c41")
         box(cx - 16, cy + (10 if back > 0 else -14), 32, 4, 22, "#a8adb3", z0=22)
 cyl(205, 609, 12, 12, "#e9e4da", z0=36)                     # fruit bowl
-cyl(370, 545, 14, 22, "#7a5b45")                            # plant in the corner
-cyl(370, 545, 16, 26, "#5f8a4a", z0=22)
+plant(370, 548, 12, 20, 20, 40, seed=3)                     # plant in the corner
 
 # ---- furniture: Küche (galley; counter on the east side, balcony door at the end) --------
 box(528, 116, 56, 298, 40, "#e9e6df")                       # white base cabinets
@@ -389,14 +482,16 @@ box(534, 214, 40, 52, 2, "#aab2b8", z0=43)                  # steel sink
 box(540, 220, 28, 22, 1, "#cfd6db", z0=45)
 cyl(574, 246, 3, 16, "#c9cdd2", z0=43)                      # tap
 box(548, 196, 30, 14, 1, "#6ac3c7", z0=43)                  # drying mat
-cyl(574, 204, 6, 14, "#5f8a4a", z0=43)                      # little plant
+box(568, 200, 12, 8, 14, "#2a2b2e", z0=43)                  # knife block
+plant(574, 252, 4.5, 6, 9, 12, pot="#e9e6e0", seed=5, n=14)  # herb pot (sits on the worktop)
 box(576, 262, 6, 22, 16, "#b0875a", z0=43)                  # cutting boards
 cyl(556, 300, 12, 18, "#1c1c1e", z0=43)                     # air fryer
 cyl(556, 334, 7, 22, "#2a2b2f", z0=43)                      # blender
 box(546, 352, 22, 20, 18, "#202124", z0=43)                 # coffee machine
 cyl(560, 392, 9, 10, "#1f1f22", z0=43)                      # rice cooker
-box(406, 220, 7, 110, 30, "#f7f7f7")                        # radiator on the west wall
-box(406, 124, 44, 44, 30, "#b98a5c")                        # wooden box/stool by the balcony door
+box(407, 220, 7, 110, 30, "#f7f7f7")                        # radiator on the west wall
+face_lines_x(414.1, 220, 330, 1, 29, 5, 100, "#f2f2f2", "#d8d8d8")
+box(407, 124, 44, 44, 30, "#b98a5c")                        # wooden box/stool by the balcony door
 box(408, 126, 40, 40, 5, "#2d2e33", z0=30)
 box(406, 330, 30, 70, 3, WHITE, z0=46)                      # wall shelf
 cyl(420, 350, 7, 5, BLACK, z0=49)                           # kettle
@@ -405,33 +500,60 @@ cyl(410, 392, 7, 2, "#9aa1a8", z0=36)                       # colander on a hook
 cyl(410, 408, 6, 2, "#58b0c4", z0=32)                       # pan on a hook
 
 # ---- furniture: WC (long and narrow; bath along the west wall, toilet at the end) -------
-box(596, 120, 74, 176, 26, "#f5f5f3")                       # bathtub
-box(602, 126, 62, 164, 1, "#e3ecef", z0=26)
-box(666, 160, 3, 136, 26, GLASS, z0=26, opacity=0.5)        # glass shower screen
-box(596, 292, 74, 3, 26, GLASS, z0=26, opacity=0.5)
-cyl(604, 140, 4, 10, "#78c06a", z0=26)                      # shampoo bottles
-cyl(612, 140, 4, 12, "#e04a7a", z0=26)
-box(596, 330, 50, 56, 32, WHITE)                            # washbasin
-cyl(620, 358, 15, 2, "#e6edf0", z0=32)
-box(594, 326, 4, 64, 18, "#d7e3e8", z0=36, east="url(#mirror)")  # mirror cabinet
-box(742, 330, 5, 60, 26, "#2c3e57", z0=8)                   # dark blue towel on the rail
-box(696, 114, 44, 20, 30, "#f6f6f4")                        # cistern
-cyl(718, 156, 17, 26, "#f8f8f6")                            # toilet
-cyl(718, 156, 12, 1, "#e3e8ea", z0=26)
-box(742, 200, 5, 70, 28, "#f7f7f7")                         # radiator
-cyl(700, 290, 5, 16, BLACK)                                 # toilet brush
-box(724, 284, 16, 16, 18, "#c7c7c4")                        # bin
-cyl(746, 186, 6, 8, "#f5f5f5", z0=20)                       # toilet roll
-cyl(724, 118, 6, 14, "#5f8a4a", z0=34)                      # plant on the window sill
+TILE_W, TILE_L = "#f3f5f5", "#d3d9da"
+face_lines_y(115.8, 596, 746, 0, 34, 10, 10, TILE_W, TILE_L)       # half-height wall tiles, end wall
+face_lines_x(595.8, 116, 418, 0, 34, 10, 10, TILE_W, TILE_L)       # and the long wall
+# bathtub: tiled apron, white rim, recessed basin
+TUB_X, TUB_Y, TUB_W, TUB_D, TUB_H = 598, 120, 72, 172, 28
+box(TUB_X, TUB_Y, TUB_W, TUB_D, 9, "#eef2f3")                       # basin floor
+box(TUB_X, TUB_Y, TUB_W, 8, TUB_H, "#f7f8f8")                      # rim: head end
+box(TUB_X, TUB_Y + TUB_D - 8, TUB_W, 8, TUB_H, "#f7f8f8")          # rim: foot end
+box(TUB_X, TUB_Y + 8, 9, TUB_D - 16, TUB_H, "#f7f8f8")             # rim: wall side
+box(TUB_X + TUB_W - 9, TUB_Y + 8, 9, TUB_D - 16, TUB_H, "#f7f8f8") # rim: room side (tiled below)
+face_lines_x(TUB_X + TUB_W + 0.1, TUB_Y + 0.5, TUB_Y + TUB_D - 0.5, 0, TUB_H - 2, 9, 9, "#f1f3f3", "#d0d6d7")
+face_lines_y(TUB_Y + TUB_D + 0.1, TUB_X + 0.5, TUB_X + TUB_W - 0.5, 0, TUB_H - 2, 9, 9, "#f1f3f3", "#d0d6d7")
+cyl(TUB_X + 36, TUB_Y + 22, 2.5, 0.3, "#9aa3a8", z0=9)              # drain
+box(TUB_X + 30, TUB_Y + 3, 12, 4, 3, "#c9ced2", z0=TUB_H)           # tap on the head end
+box(TUB_X + 34, TUB_Y + 6, 4, 6, 1.5, "#c9ced2", z0=TUB_H + 1)
+cyl(TUB_X + 3, TUB_Y + 90, 1.2, 46, "#c9ced2", z0=TUB_H)            # shower riser rail
+box(TUB_X + 1, TUB_Y + 84, 6, 12, 2, "#d9dde0", z0=TUB_H + 42)      # shower head
+cyl(TUB_X + 13, TUB_Y + 16, 3.5, 9, "#78c06a", z0=TUB_H)            # shampoo bottles on the rim
+cyl(TUB_X + 13, TUB_Y + 26, 3.5, 11, "#e04a7a", z0=TUB_H)
+cyl(TUB_X + 13, TUB_Y + 35, 3, 8, "#f2c14e", z0=TUB_H)
+# folding glass shower screen on the room side
+box(TUB_X + TUB_W - 4, TUB_Y + 40, 2, 64, 46, GLASS, z0=TUB_H, opacity=0.42)
+box(TUB_X + TUB_W - 4, TUB_Y + 104, 2, 40, 46, GLASS, z0=TUB_H, opacity=0.42)
+for yy in (TUB_Y + 40, TUB_Y + 103, TUB_Y + 143):
+    box(TUB_X + TUB_W - 4.5, yy, 3, 1.5, 46, "#b9bfc4", z0=TUB_H)   # aluminium profiles
+box(TUB_X + TUB_W - 4.5, TUB_Y + 40, 3, 104, 1.5, "#b9bfc4", z0=TUB_H + 46)
+cyl(TUB_X + TUB_W + 4, TUB_Y + 150, 1.5, 70, "#d4d8db")             # tension pole by the tub
+# washbasin, mirror cabinet, towel
+box(598, 330, 48, 54, 30, WHITE)                                    # basin cabinet
+box(596, 328, 52, 58, 3, "#fbfbfb", z0=30)                          # ceramic top
+cyl(622, 357, 13, 1, "#dde6ea", z0=33)                              # bowl
+cyl(602, 357, 1.6, 6, "#c9ced2", z0=33)                             # tap
+cyl(606, 340, 2.5, 6, "#f0e6d8", z0=33)                             # soap dispenser
+box(596, 326, 4, 64, 18, "#d7e3e8", z0=38, east="url(#mirror)")     # mirror cabinet
+box(742, 330, 5, 60, 26, "#2c3e57", z0=8)                           # dark blue towel on the rail
+frect(602, 392, 40, 24, "#26272b", 4)                               # dark mat at the basin
+# toilet at the end under the window
+box(696, 117, 44, 18, 30, "#f6f6f4")                                # cistern
+box(712, 120, 12, 3, 1.5, "#d7dbde", z0=30)                         # flush button
+cyl(718, 156, 16, 22, "#f8f8f6")                                    # bowl
+cyl(718, 158, 15, 2.5, "#ffffff", z0=22)                            # seat
+cyl(718, 158, 9, 0.6, "#e6ecee", z0=24.5)
+box(742, 200, 5, 70, 28, "#f7f7f7")                                 # radiator
+cyl(700, 290, 5, 16, BLACK)                                         # toilet brush
+box(724, 284, 16, 16, 18, "#c7c7c4")                                # bin
+cyl(746, 186, 6, 8, "#f5f5f5", z0=20)                               # toilet roll
+plant(724, 116, 4.5, 5, 9, 12, pot="#e9e6e0", seed=7, n=14)         # plant on the window sill (hangs low)
 
 # ---- furniture: Balkon ----------------------------------------------------------------
 box(X1, 0, X3 - X1, 4, 30, "#62676c", shadow=False)        # railing
 for xx in range(X1 + 12, X3 - 6, 26):
     box(xx, 0, 3, 4, 30, "#70757a", shadow=False)
-cyl(430, 34, 18, 22, "#7a5b45")                             # plant pots
-cyl(430, 34, 14, 22, "#5f8a4a", z0=22)
-cyl(716, 34, 16, 20, "#7a5b45")
-cyl(716, 34, 12, 18, "#6f9a55", z0=20)
+plant(430, 36, 15, 20, 22, 36, pot="#8a5a3c", seed=11)     # plant pots
+plant(716, 36, 13, 18, 18, 30, pot="#8a5a3c", seed=12, greens=("#6f9a55", "#88b45f", "#5b8546", "#a4c96d"))
 box(520, 30, 44, 44, 24, "#4c4f54")                         # chairs
 box(520, 30, 44, 8, 22, "#4c4f54", z0=24)
 box(620, 30, 44, 44, 24, "#4c4f54")
@@ -440,7 +562,7 @@ cyl(592, 60, 22, 34, "#d9d6cf")                             # small round table
 
 # ---- furniture: Flur, corridor, storage --------------------------------------------------
 # glass vitrine with dishes, standing in the middle between the bedroom and living room doors
-VX, VY = 404, 506
+VX, VY = 406, 506
 box(VX, VY, 4, 60, 62, "#5a3822")                           # back
 box(VX, VY, 46, 3, 62, "#5a3822")                           # sides
 box(VX, VY + 57, 4, 3, 62, "#5a3822")                       # front-left post
@@ -457,11 +579,16 @@ box(VX + 44, VY + 3, 2, 54, 56, GLASS, z0=6, opacity=0.3)   # glass doors
 box(VX - 2, VY - 2, 50, 64, 4, "#6b4329", z0=62)            # crown
 cyl(880, 524, 16, 30, "#c9b27a")                            # gold side table, marble top
 cyl(880, 524, 16, 2, "#f2f1ed", z0=30)
-box(1030, 426, 70, 34, 52, "#7a5434")                       # tall shoe cabinet, opposite the entrance
+box(1030, 429, 70, 32, 52, "#7a5434")                       # tall shoe cabinet, opposite the entrance
+grain(1030, 429, 70, 32, 52, along="x", step=5)
 for zz in (14, 28, 42):
-    box(1030, 459, 70, 1, 1.5, "#5e3f25", z0=zz)
-box(990, 426, 26, 6, 52, "#c7c9cc", south="url(#mirror)")   # mirror leaning on the wall
-box(940, 426, 40, 4, 26, "#f2f2f0", z0=22)                  # fuse box
+    box(1030, 461, 70, 1, 1.5, "#5e3f25", z0=zz)
+box(990, 429, 26, 6, 52, "#c7c9cc", south="url(#mirror)")   # mirror leaning on the wall
+box(940, 429, 40, 4, 26, "#f2f2f0", z0=22)                  # fuse box
+box(1012, 429, 5, 1, 5, "#f4f4f2", z0=26)                   # light switches by the doors
+box(405.8, 656, 1, 5, 5, "#f4f4f2", z0=26)
+box(440, 425.8, 5, 1, 5, "#f4f4f2", z0=26)
+box(540, 705.8, 5, 1, 5, "#f4f4f2", z0=26)
 box(1102, 470, 4, 60, 8, "#5a5048", z0=36)                  # coat hooks
 box(1092, 476, 10, 18, 26, "#6b2f2f", z0=10)                # bag on a hook
 box(1036, 474, 16, 26, 6, "#1f1f22")                        # shoes on the mat
@@ -502,7 +629,7 @@ box(668, 760, 54, 14, 12, "#34363a", z0=26)                 # arms
 box(668, 826, 54, 14, 12, "#34363a", z0=26)
 box(674, 776, 46, 48, 5, "#4d5057", z0=26)                  # seat cushion
 # black/wood bookshelf rack on the wall shared with the Wohnzimmer
-RX, RY = 406, 760
+RX, RY = 407, 760
 for yy in (RY, RY + 70, RY + 136):
     box(RX, yy, 30, 4, 62, BLACK)                           # posts
 for zz in (2, 18, 34, 50):
@@ -519,12 +646,12 @@ cyl(RX + 15, RY + 30, 5, 14, BLACK, z0=20)                  # shaker bottle
 # ---- walls -------------------------------------------------------------------
 hwall(X0, X1, Y0, OUT, windows=[(176, 316)])                                     # Schlafzimmer north
 vwall(Y0, Y4, X0, OUT)                                                           # west
-hwall(X0, X3, Y4, OUT, windows=[(70, 280), (470, 660)])                          # south
-vwall(YC, Y4, X3, OUT)                                                           # storage + office east (stairwell)
-hwall(X3, X4, YC, OUT, doors=[(1020, 1098)])                                     # corridor south + entrance door
-vwall(YK, YC, X4, OUT)                                                           # corridor end
+hwall(X0, X3, Y4, OUT, windows=[(70, 280), (470, 660)], skirt=False)             # south
+vwall(YC, Y4, X3, OUT, skirt=False)                                              # storage + office east (stairwell)
+hwall(X3, X4, YC, OUT, doors=[(1020, 1098)], skirt=False)                        # corridor south + entrance door
+vwall(YK, YC, X4, OUT, skirt=False)                                              # corridor end
 hwall(X3, X4, YK, OUT)                                                           # corridor north (neighbour)
-vwall(Y0, YK, X3, OUT)                                                           # Balkon + WC east (neighbour)
+vwall(Y0, YK, X3, OUT, skirt=False)                                              # Balkon + WC east (neighbour)
 hwall(X1, X3, YBAL, IN, glassdoors=[(452, 520)], windows=[(690, 740)])           # Balkon / Küche + WC
 vwall(Y0, Y4, X1, IN, doors=[(428, 500), (572, 650)])                            # Schlafzimmer, Wohnzimmer doors
 hwall(X0, X1, YB, IN)                                                            # Schlafzimmer / Wohnzimmer
@@ -581,6 +708,14 @@ out.append('''<defs>
     <line x1="0" y1="20" x2="120" y2="20" stroke="rgba(0,0,0,0.22)" stroke-width="1.4"/>
     <line x1="70" y1="0" x2="70" y2="20" stroke="rgba(0,0,0,0.14)" stroke-width="1"/>
   </pattern>
+  <pattern id="semis" width="8" height="8" patternUnits="userSpaceOnUse">
+    <rect width="8" height="8" fill="#e3dbd2"/>
+    <path d="M0 8 A4 4 0 0 1 8 8 Z" fill="#8f8a93"/><path d="M0 4 A4 4 0 0 1 8 4 Z" fill="#c9a7a7" opacity="0.7"/>
+  </pattern>
+  <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0d0e11"/><stop offset="0.48" stop-color="#1a1d24"/>
+    <stop offset="0.52" stop-color="#2b3140"/><stop offset="1" stop-color="#0f1013"/>
+  </linearGradient>
   <pattern id="rug" width="12" height="12" patternUnits="userSpaceOnUse">
     <circle cx="6" cy="6" r="3.2" fill="rgba(110,90,70,0.10)"/>
   </pattern>
