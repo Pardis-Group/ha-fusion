@@ -9,6 +9,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { icons, iconFor } from '$lib/Floorplan/icons';
 	import type { Floorplan, Pin } from '$lib/Floorplan/types';
+	import { activeEffects, refreshEffects } from '$lib/Floorplan/effects';
 
 	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any };
 
@@ -103,7 +104,7 @@
 		const sel = { entity_id: p.entity_id, name: p.name };
 		switch (domain(p.entity_id)) {
 			case 'light':
-				openModal(() => import('$lib/Modal/LightModal.svelte'), { sel });
+				openLights([p.entity_id], nameOf($states, p));
 				break;
 			case 'switch':
 			case 'input_boolean':
@@ -159,6 +160,37 @@
 			entity_id: pins.map((p) => p.entity_id)
 		});
 	}
+
+	/* ---------- light panel: one light, a room, or the whole flat ---------- */
+	function openLights(entities: string[], title: string) {
+		if (editing || !entities.length) return;
+		openModal(() => import('$lib/Floorplan/LightPanel.svelte'), { entities, title });
+	}
+
+	const roomLights = (room: string) => roomPins(room).filter((p) => domain(p.entity_id) === 'light').map((p) => p.entity_id);
+
+	$: allLights = Object.keys($states || {})
+		.filter((id) => domain(id) === 'light')
+		.sort();
+
+	let roomTimer: ReturnType<typeof setTimeout> | undefined;
+	let roomLongPressed = false;
+	function roomPressStart(room: string) {
+		clearTimeout(roomTimer);
+		roomLongPressed = false;
+		roomTimer = setTimeout(() => {
+			roomLongPressed = true;
+			openLights(roomLights(room), room);
+		}, 550);
+	}
+
+	// which lights run an effect (party, christmas, ...); refreshed while the page is open
+	let effectsTimer: ReturnType<typeof setInterval> | undefined;
+	$: if ($connected && browser && !effectsTimer) {
+		refreshEffects($connection);
+		effectsTimer = setInterval(() => refreshEffects($connection), 5000);
+	}
+	onDestroy(() => clearInterval(effectsTimer));
 
 	/* ---------- people & temperature ---------- */
 	$: people = plan.people.map((id) => {
@@ -266,6 +298,10 @@
 						<svg viewBox="0 0 24 24"><path d={m.icon} /></svg>
 					</button>
 				{/each}
+				<button class="nav all-lights" on:click={() => openLights(allLights, 'All lights')}>
+					<span>All lights</span>
+					<svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg>
+				</button>
 			</nav>
 
 			<div class="bottom">
@@ -319,7 +355,20 @@
 				{#if mode === 'rooms' && !editing}
 					{#each plan.rooms as room (room.name)}
 						{@const lit = roomPins(room.name).filter((p) => isOn($states, p.entity_id)).length}
-						<button class="room" style:left="{room.x}%" style:top="{room.y}%" on:click={() => toggleRoom(room.name)}>
+						<button
+							class="room"
+							style:left="{room.x}%"
+							style:top="{room.y}%"
+							title="Click to switch the room's lights, right-click for colours and modes"
+							on:click={() => {
+								if (roomLongPressed) return (roomLongPressed = false);
+								toggleRoom(room.name);
+							}}
+							on:contextmenu|preventDefault={() => openLights(roomLights(room.name), room.name)}
+							on:pointerdown={(e) => e.pointerType === 'touch' && roomPressStart(room.name)}
+							on:pointerup={() => clearTimeout(roomTimer)}
+							on:pointerleave={() => clearTimeout(roomTimer)}
+						>
 							<span class="room-name">{room.name}</span>
 							<span class="room-sub">
 								{#if roomPins(room.name).length}
@@ -338,6 +387,7 @@
 						class:on={isOn($states, p.entity_id)}
 						class:unavailable={isUnavailable($states, p.entity_id)}
 						class:dragging={dragging === p}
+						class:fx={Boolean($activeEffects[p.entity_id])}
 						style:left="{p.x}%"
 						style:top="{p.y}%"
 						title="{nameOf($states, p)}{isUnavailable($states, p.entity_id) ? ' · unavailable' : ''}"
@@ -649,6 +699,31 @@
 			0 6px 16px -4px rgba(0, 0, 0, 0.6),
 			0 0 0 4px rgba(255, 184, 107, 0.35);
 	}
+	.pin.fx::before {
+		content: '';
+		position: absolute;
+		inset: -5px;
+		border-radius: 50%;
+		background: conic-gradient(#ff0080, #00c8ff, #ffdc00, #8c00ff, #00ff78, #ff0080);
+		/* only a ring around the pin */
+		-webkit-mask: radial-gradient(closest-side, transparent 78%, #000 80%);
+		mask: radial-gradient(closest-side, transparent 78%, #000 80%);
+		animation: fx-spin 2.4s linear infinite;
+	}
+	@keyframes fx-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.nav.all-lights {
+		margin-top: 10px;
+		border: 1px solid rgba(255, 184, 107, 0.35);
+		color: #ffcf9a;
+	}
+	.nav.all-lights:hover {
+		background: rgba(255, 184, 107, 0.12);
+	}
+
 	.pin.unavailable {
 		background: #5a5b60;
 		color: #9a9a9f;
@@ -826,6 +901,9 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.pin.fx::before {
+			animation: none;
+		}
 		.pin,
 		.nav,
 		.glow,

@@ -10,9 +10,12 @@ services:
     image: ha-fusion:local
     volumes:
       - /home/len-ser-01/ha-fusion-data:/app/data
+      # long-lived HA token for the light effects engine (server side only, read-only)
+      - /home/len-ser-01/.config/ha-fusion/ha_token:/run/secrets/ha_token:ro
     ports:
       - "3015:5050"
     environment:
       TZ: Asia/Tehran
       HASS_URL: http://192.168.1.110:8123
+      HASS_TOKEN_FILE: /run/secrets/ha_token
     restart: unless-stopped
