@@ -15,7 +15,8 @@
 
 	type Geometry = { width: number; height: number; rooms: Record<string, number[][][]> };
 
-	$configuration = data.configuration;
+	// talk to Home Assistant through this server, on the page's own origin (see server.js)
+	$configuration = browser ? { ...data.configuration, hassUrl: window.location.origin } : data.configuration;
 	$translation = data.translations;
 	$selectedLanguage = 'en';
 	let plan: Floorplan = structuredClone(data.floorplan);

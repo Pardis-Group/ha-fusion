@@ -31,7 +31,8 @@
 
 	let altKeyPressed = false;
 
-	$configuration = data?.configuration;
+	// talk to Home Assistant through this server, on the page's own origin (see server.js)
+	$configuration = browser ? { ...data?.configuration, hassUrl: window.location.origin } : data?.configuration;
 	$dashboard = data?.dashboard;
 	$translation = data?.translations;
 	$selectedLanguage = data?.configuration?.locale || 'en';

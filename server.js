@@ -48,10 +48,34 @@ const entryMiddleware = async (req, res, next) => {
 };
 
 // production proxy
+//
+// The browser talks to Home Assistant through this server, on the same origin as the
+// dashboard. That way it works through a tunnel or reverse proxy on https (no mixed
+// content, no need to reach port 8123 from outside): login pages, the REST API and
+// the WebSocket all go through here.
+const HA_PATHS = ['/api/', '/auth/', '/local/', '/frontend_latest/', '/frontend_es5/', '/static/'];
+
+// Home Assistant refuses forwarded requests unless it is configured for reverse proxies
+// (http: use_x_forwarded_for + trusted_proxies). Drop those headers so it sees a plain
+// request from this container. Set HA_KEEP_FORWARDED=true once Home Assistant trusts
+// this container, so its logs show the real client address.
+const KEEP_FORWARDED = process.env.HA_KEEP_FORWARDED === 'true';
+const FORWARDED = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'forwarded', 'x-real-ip'];
+const stripForwarded = (proxyReq) => {
+	if (KEEP_FORWARDED) return;
+	for (const h of FORWARDED) proxyReq.removeHeader(h);
+};
+
 const proxy = createProxyMiddleware({
-	pathFilter: ['/local/', '/api/'],
-	router: (req) => req.target,
-	changeOrigin: true
+	pathFilter: (path) => HA_PATHS.some((p) => path.startsWith(p)),
+	// websocket upgrades skip the express middleware, so fall back to HASS_URL
+	router: (req) => req.target || process.env.HASS_URL,
+	changeOrigin: true,
+	ws: true,
+	on: {
+		proxyReq: stripForwarded,
+		proxyReqWs: stripForwarded
+	}
 });
 
 app.use(entryMiddleware, proxy);
@@ -59,7 +83,7 @@ app.use(entryMiddleware, proxy);
 // let SvelteKit handle everything else, including serving prerendered pages and static assets
 app.use(handler);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
 	if (ADDON) {
 		console.log('ADDON:', ADDON);
 		console.log('INGRESS_PORT:', PORT);
@@ -71,3 +95,6 @@ app.listen(PORT, () => {
 		console.log('ADDON:', ADDON);
 	}
 });
+
+// Home Assistant's WebSocket (/api/websocket) through the same proxy
+server.on('upgrade', proxy.upgrade);
