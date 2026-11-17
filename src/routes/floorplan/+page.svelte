@@ -6,10 +6,10 @@
 	import { callService } from 'home-assistant-js-websocket';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { icons, iconFor } from '$lib/Floorplan/icons';
 	import type { Floorplan, Pin } from '$lib/Floorplan/types';
-	import { activeEffects, refreshEffects } from '$lib/Floorplan/effects';
+	import { activeEffects, refreshEffects, stopEffect } from '$lib/Floorplan/effects';
 
 	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any; geometry: Geometry | null };
 
@@ -259,6 +259,55 @@
 		return `${location.protocol}//ha.${h.split('.').slice(1).join('.')}`;
 	})();
 
+	/* ---------- phone layout ---------- */
+	let zoomed = false;
+	let planWrap: HTMLDivElement;
+	async function toggleZoom() {
+		zoomed = !zoomed;
+		await tick();
+		// centre the plan once the width animation (300ms) has finished
+		setTimeout(() => {
+			if (planWrap) planWrap.scrollTo({ left: (planWrap.scrollWidth - planWrap.clientWidth) / 2, behavior: 'smooth' });
+		}, 320);
+	}
+
+	const colourOf = (ids: string[]) => {
+		const lit = ids.map((id) => $states?.[id]).filter((s) => s?.state === 'on');
+		if (!lit.length) return 'rgb(255, 196, 120)';
+		const avg = [0, 1, 2].map((i) => lit.reduce((sum, s) => sum + ((s!.attributes?.rgb_color as number[]) || DEFAULT_RGB)[i], 0) / lit.length);
+		return rgbCss(avg);
+	};
+
+	$: roomCards = plan.rooms
+		.map((room) => {
+			const lights = roomLights(room.name);
+			const states = lights.map((id) => $states?.[id]);
+			const on = states.filter((s) => s?.state === 'on');
+			const reachable = states.some((s) => s && !['unavailable', 'unknown'].includes(s.state));
+			const level = on.length ? Math.round(on.reduce((sum, s) => sum + (s!.attributes?.brightness ?? 255), 0) / on.length / 2.55) : 0;
+			const fx = lights.map((id) => $activeEffects[id]?.mode).find(Boolean);
+			return {
+				name: room.name,
+				lights,
+				on: on.length,
+				reachable,
+				color: colourOf(lights),
+				effect: fx ? fx.charAt(0).toUpperCase() + fx.slice(1) : '',
+				status: !reachable ? 'Unreachable' : on.length ? `On · ${level}%` : 'Off'
+			};
+		})
+		.filter((r) => r.lights.length);
+
+	$: allOn = allLights.filter((id) => $states?.[id]?.state === 'on').length;
+	$: allColor = colourOf(allLights);
+	$: mediaPins = plan.pins.filter((p) => domain(p.entity_id) === 'media_player');
+
+	async function toggleAll() {
+		if (!$connection) return;
+		await stopEffect($connection, allLights);
+		callService($connection, 'light', allOn ? 'turn_off' : 'turn_on', { entity_id: allLights });
+	}
+
 	/* ---------- people & temperature ---------- */
 	$: people = plan.people.map((id) => {
 		const s = $states?.[id];
@@ -345,12 +394,39 @@
 
 <svelte:head>
 	<title>Home</title>
+	<meta name="theme-color" content="#1d1e21" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	<meta name="apple-mobile-web-app-title" content="Home" />
+	<link rel="apple-touch-icon" href="{base}/home-icon-180.png" />
 </svelte:head>
 
 <Theme initial={data.theme} />
 
 <div class="frame">
 	<div class="panel" class:editing>
+		<!-- phone: compact header -->
+		<header class="m-header" id="top">
+			<div>
+				<div class="m-time">{time}</div>
+				<div class="m-date">{date}</div>
+			</div>
+			<div class="m-side">
+				{#each people as person (person.id)}
+					<div class="avatar small" class:away={!person.home} title="{person.name} · {person.home ? 'home' : 'away'}">
+						{#if person.picture}
+							<img src={person.picture} alt={person.name} />
+						{:else}
+							<span>{person.name.slice(0, 1).toUpperCase()}</span>
+						{/if}
+					</div>
+				{/each}
+				<span class="m-temp">{temperature ?? '--'}</span>
+				<span class="dot" class:ok={$connected} title={$connected ? 'Connected' : 'Connecting…'}></span>
+			</div>
+		</header>
+
 		<!-- sidebar -->
 		<aside>
 			<div class="clock">
@@ -405,6 +481,14 @@
 
 		<!-- plan -->
 		<main>
+			<!-- phone: what the pins show -->
+			<div class="m-modes" role="tablist">
+				{#each modes as m}
+					<button role="tab" class:active={mode === m.id} on:click={() => (mode = m.id)}>{m.label}</button>
+				{/each}
+			</div>
+
+			<div class="plan-wrap" class:zoomed bind:this={planWrap}>
 			<div
 				class="plan"
 				style:--ar={geo ? geo.width / geo.height : undefined}
@@ -513,6 +597,11 @@
 				{/each}
 			</div>
 
+			</div>
+			<button class="m-zoom" on:click={toggleZoom} aria-label={zoomed ? 'Show the whole flat' : 'Zoom in on the plan'}>
+				<svg viewBox="0 0 24 24"><path d={zoomed ? icons.zoomOut : icons.zoomIn} /></svg>
+			</button>
+
 			<!-- edit toolbar -->
 			<div class="toolbar">
 				{#if editing}
@@ -531,8 +620,92 @@
 				{/if}
 			</div>
 		</main>
+
+		<!-- phone: lights by room -->
+		<section class="m-rooms" id="rooms">
+			<button class="m-card all" style:--c={allColor} class:lit={allOn > 0} on:click={() => openLights(allLights, 'All lights')}>
+				<span class="m-bulb"><svg viewBox="0 0 24 24"><path d={icons.light} /></svg></span>
+				<span class="m-text">
+					<span class="m-name">All lights</span>
+					<span class="m-sub">{allOn ? `${allOn} of ${allLights.length} on` : 'All off'}</span>
+				</span>
+				<span
+					class="m-switch"
+					class:on={allOn > 0}
+					role="switch"
+					tabindex="0"
+					aria-checked={allOn > 0}
+					aria-label="Switch all lights"
+					on:click|stopPropagation={toggleAll}
+					on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleAll())}
+				></span>
+			</button>
+
+			<h2 class="m-title">Rooms</h2>
+			<div class="m-grid">
+				{#each roomCards as r (r.name)}
+					<div
+						class="m-card m-room"
+						class:lit={r.on > 0}
+						class:off={!r.reachable}
+						style:--c={r.color}
+						role="button"
+						tabindex="0"
+						on:click={() => {
+							if (roomLongPressed) return (roomLongPressed = false);
+							toggleRoom(r.name);
+						}}
+						on:keydown={(e) => e.key === 'Enter' && toggleRoom(r.name)}
+						on:contextmenu|preventDefault={() => openLights(r.lights, r.name)}
+						on:pointerdown={(e) => e.pointerType === 'touch' && roomPressStart(r.name)}
+						on:pointerup={() => clearTimeout(roomTimer)}
+						on:pointerleave={() => clearTimeout(roomTimer)}
+					>
+						<span class="m-bulb"><svg viewBox="0 0 24 24"><path d={icons.light} /></svg></span>
+						<span class="m-name">{r.name}</span>
+						<span class="m-sub">{r.status}</span>
+						<button
+							class="m-more"
+							data-room-panel
+							aria-label="Colours and modes for {r.name}"
+							on:click|stopPropagation={() => openLights(r.lights, r.name)}
+						>
+							<svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg>
+						</button>
+						{#if r.effect}
+							<span class="m-fx">{r.effect}</span>
+						{/if}
+					</div>
+				{/each}
+			</div>
+
+			{#if mediaPins.length}
+				<h2 class="m-title">Media</h2>
+				<div class="m-grid">
+					{#each mediaPins as p (p.id)}
+						<button class="m-card m-room" class:off={isUnavailable($states, p.entity_id)} on:click={() => openDetails(p)}>
+							<span class="m-bulb"><svg viewBox="0 0 24 24"><path d={icons.media} /></svg></span>
+							<span class="m-name">{nameOf($states, p)}</span>
+							<span class="m-sub cap">{isUnavailable($states, p.entity_id) ? 'Unreachable' : $states?.[p.entity_id]?.state}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</section>
 	</div>
 </div>
+
+<!-- phone: tab bar -->
+<nav class="m-tabbar" aria-label="Sections">
+	<a href="#top" class="tab"><svg viewBox="0 0 24 24"><path d={icons.home} /></svg><span>Home</span></a>
+	<a href="#rooms" class="tab"><svg viewBox="0 0 24 24"><path d={icons.rooms} /></svg><span>Rooms</span></a>
+	<button class="tab" on:click={() => openLights(allLights, 'All lights')}
+		><svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg><span>All lights</span></button
+	>
+	<a class="tab" href="{haUrl}/config/dashboard" target="_blank" rel="noopener"
+		><svg viewBox="0 0 24 24"><path d={icons.cog} /></svg><span>Settings</span></a
+	>
+</nav>
 
 <style>
 	:global(body) {
@@ -976,55 +1149,402 @@
 	}
 
 	/* ---------- responsive ---------- */
-	@media (max-width: 900px) {
+	/* ---------- phone-only parts are hidden on bigger screens ---------- */
+	.m-header,
+	.m-modes,
+	.m-zoom,
+	.m-rooms,
+	.m-tabbar {
+		display: none;
+	}
+	.plan-wrap {
+		display: contents;
+	}
+
+	/* ---------- tablets in portrait ---------- */
+	@media (max-width: 1100px) and (min-width: 761px) {
+		.panel {
+			grid-template-columns: 240px minmax(0, 1fr);
+		}
+		aside {
+			padding: 32px 22px 24px;
+		}
+		.time {
+			font-size: 52px;
+		}
+	}
+
+	/* ---------- phones: a single column like an app ---------- */
+	@media (max-width: 760px) {
+		:global(body) {
+			background: #1d1e21 !important;
+		}
 		.frame {
+			display: block;
 			padding: 0;
+			min-height: 100dvh;
 		}
 		.panel {
-			grid-template-columns: 1fr;
-			grid-template-rows: auto 1fr;
-			border-radius: 0;
+			display: block;
 			height: auto;
-			min-height: 100vh;
+			min-height: 100dvh;
+			border-radius: 0;
+			background: #1d1e21;
+			box-shadow: none;
+			overflow: visible;
+			padding-bottom: calc(84px + env(safe-area-inset-bottom));
+		}
+		aside,
+		.toolbar {
+			display: none;
+		}
+
+		/* header */
+		.m-header {
+			display: flex;
+			align-items: flex-end;
+			justify-content: space-between;
+			gap: 12px;
+			padding: calc(env(safe-area-inset-top) + 18px) 20px 14px;
+		}
+		.m-time {
+			font-size: 46px;
+			font-weight: 200;
+			line-height: 1;
+			font-variant-numeric: tabular-nums;
+			color: #f3f1ec;
+		}
+		.m-date {
+			margin-top: 6px;
+			font-size: 13px;
+			color: #8d8d93;
+		}
+		.m-side {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding-bottom: 4px;
+		}
+		.avatar.small {
+			width: 30px;
+			height: 30px;
+			font-size: 12px;
+		}
+		.m-temp {
+			margin-left: 4px;
+			font-size: 18px;
+			font-weight: 300;
+			font-variant-numeric: tabular-nums;
+		}
+
+		/* plan card */
+		main {
+			display: block;
+			position: relative;
+			margin: 0 12px;
+			padding: 10px 0 0;
+			border-radius: 24px;
+			background: #26272b;
+			overflow: hidden;
+		}
+		.m-modes {
+			display: flex;
+			gap: 6px;
+			padding: 0 10px 8px;
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.m-modes::-webkit-scrollbar {
+			display: none;
+		}
+		.m-modes button {
+			flex: none;
+			font: inherit;
+			font-size: 13px;
+			padding: 7px 13px;
+			border: 0;
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.06);
+			color: #b8b7b3;
+		}
+		.m-modes button.active {
+			background: #f3f1ec;
+			color: #1d1e21;
+			font-weight: 600;
+		}
+		.plan-wrap {
+			display: block;
+			overflow-x: auto;
+			overflow-y: hidden;
+			-webkit-overflow-scrolling: touch;
+			scrollbar-width: none;
+			padding: 4px 0 12px;
+		}
+		.plan-wrap::-webkit-scrollbar {
+			display: none;
 		}
 		.plan {
 			width: 100%;
+			margin: 0 auto;
+			touch-action: pan-x pan-y;
+			transition: width 300ms ease;
 		}
-		.toolbar {
-			position: static;
-			margin-top: 12px;
+		.plan-wrap.zoomed .plan {
+			width: 210%;
 		}
-		aside {
-			border-right: 0;
-			border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-			padding: 24px 20px;
-			gap: 20px;
+		.m-zoom {
+			display: grid;
+			place-items: center;
+			position: absolute;
+			right: 10px;
+			bottom: 10px;
+			width: 40px;
+			height: 40px;
+			border: 0;
+			border-radius: 12px;
+			background: rgba(20, 20, 22, 0.75);
+			color: #f3f1ec;
+			backdrop-filter: blur(6px);
 		}
-		.time {
-			font-size: 40px;
+		.m-zoom svg {
+			width: 22px;
+			height: 22px;
+			fill: currentColor;
 		}
-		nav {
-			flex-direction: row;
-			overflow-x: auto;
+		.pin {
+			width: 32px;
+			height: 32px;
 		}
-		.nav span {
-			white-space: nowrap;
+		.pin svg {
+			width: 16px;
+			height: 16px;
 		}
-		.bottom {
-			margin-top: 0;
-			flex-direction: row;
-			align-items: center;
-			justify-content: space-between;
-			flex-wrap: wrap;
-		}
-		.status {
-			width: 100%;
-		}
-		.label {
+		.pin-name {
 			display: none;
 		}
-		main {
+		.room {
+			padding: 6px 10px;
+			border-radius: 10px;
+		}
+		.room-name {
+			font-size: 12px;
+		}
+		.room-sub {
+			font-size: 10px;
+		}
+
+		/* rooms */
+		.m-rooms {
+			display: block;
+			padding: 14px 12px 8px;
+		}
+		.m-title {
+			margin: 22px 8px 10px;
+			font-size: 17px;
+			font-weight: 600;
+			color: #f3f1ec;
+		}
+		.m-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+		}
+		.m-card {
+			position: relative;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 3px;
+			width: 100%;
+			min-height: 108px;
+			padding: 14px;
+			border: 0;
+			border-radius: 22px;
+			background: #26272b;
+			color: #e8e6e1;
+			font: inherit;
+			text-align: left;
+			cursor: pointer;
+			-webkit-tap-highlight-color: transparent;
+			transition:
+				background 600ms ease,
+				transform 120ms ease;
+		}
+		.m-card:active {
+			transform: scale(0.97);
+		}
+		.m-card.lit {
+			background:
+				radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--c) 34%, transparent), transparent 70%),
+				#2c2d32;
+		}
+		.m-card.off {
+			opacity: 0.55;
+		}
+		.m-card.all {
+			flex-direction: row;
+			align-items: center;
+			gap: 14px;
+			min-height: 0;
 			padding: 16px;
+		}
+		.m-text {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			margin-right: auto;
+		}
+		.m-bulb {
+			display: grid;
+			place-items: center;
+			width: 40px;
+			height: 40px;
+			margin-bottom: 10px;
+			border-radius: 50%;
+			background: #3a3b40;
+			color: #8d8d93;
+			transition:
+				background 600ms ease,
+				color 600ms ease,
+				box-shadow 600ms ease;
+		}
+		.m-card.all .m-bulb {
+			margin-bottom: 0;
+		}
+		.m-card.lit .m-bulb {
+			background: #f6f4ef;
+			color: var(--c);
+			box-shadow: 0 0 18px -2px var(--c);
+		}
+		.m-bulb svg {
+			width: 20px;
+			height: 20px;
+			fill: currentColor;
+		}
+		.m-name {
+			font-size: 15px;
+			font-weight: 600;
+		}
+		.m-sub {
+			font-size: 13px;
+			color: #9a9aa0;
+		}
+		.m-sub.cap {
+			text-transform: capitalize;
+		}
+		.m-more {
+			position: absolute;
+			top: 10px;
+			right: 10px;
+			display: grid;
+			place-items: center;
+			width: 36px;
+			height: 36px;
+			border: 0;
+			border-radius: 12px;
+			background: rgba(255, 255, 255, 0.06);
+			color: #d6d4cf;
+		}
+		.m-more svg {
+			width: 18px;
+			height: 18px;
+			fill: currentColor;
+		}
+		.m-fx {
+			position: absolute;
+			right: 12px;
+			bottom: 12px;
+			font-size: 11px;
+			padding: 3px 8px;
+			border-radius: 999px;
+			background: rgba(255, 184, 107, 0.18);
+			color: #ffcf9a;
+		}
+		.m-switch {
+			flex: none;
+			position: relative;
+			width: 52px;
+			height: 31px;
+			border-radius: 999px;
+			background: #45464c;
+			transition: background 200ms ease;
+		}
+		.m-switch::after {
+			content: '';
+			position: absolute;
+			top: 3px;
+			left: 3px;
+			width: 25px;
+			height: 25px;
+			border-radius: 50%;
+			background: #fff;
+			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+			transition: transform 200ms ease;
+		}
+		.m-switch.on {
+			background: #34c759;
+		}
+		.m-switch.on::after {
+			transform: translateX(21px);
+		}
+
+		/* tab bar */
+		.m-tabbar {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			position: fixed;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			z-index: 2;
+			padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+			background: rgba(29, 30, 33, 0.88);
+			backdrop-filter: blur(16px);
+			-webkit-backdrop-filter: blur(16px);
+			border-top: 1px solid rgba(255, 255, 255, 0.06);
+			font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+		}
+		.tab {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 3px;
+			padding: 6px 0;
+			border: 0;
+			background: none;
+			color: #9a9aa0;
+			font: inherit;
+			font-size: 11px;
+			text-decoration: none;
+		}
+		.tab svg {
+			width: 24px;
+			height: 24px;
+			fill: currentColor;
+		}
+		.tab:active {
+			color: #ffcf9a;
+		}
+
+		/* light panel and other dialogs become a sheet from the bottom */
+		:global(#modal) {
+			align-items: flex-end !important;
+		}
+		:global(#modal .contents) {
+			width: 100vw !important;
+			max-width: 100vw !important;
+			max-height: 90dvh !important;
+			border-radius: 24px 24px 0 0 !important;
+			padding: 0.6rem 1.1rem calc(1.4rem + env(safe-area-inset-bottom)) !important;
+		}
+		:global(#modal .contents)::before {
+			content: '';
+			display: block;
+			width: 40px;
+			height: 5px;
+			margin: 0 auto 0.8rem;
+			border-radius: 3px;
+			background: rgba(255, 255, 255, 0.25);
 		}
 	}
 

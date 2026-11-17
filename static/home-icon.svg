@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2d33"/><stop offset="1" stop-color="#1b1c20"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffb86b" stop-opacity="0.85"/><stop offset="1" stop-color="#ffb86b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <ellipse cx="256" cy="300" rx="190" ry="150" fill="url(#glow)" opacity="0.55"/>
+  <!-- isometric house -->
+  <polygon points="256,336 406,261 406,351 256,426" fill="#c9c5bd"/>
+  <polygon points="256,336 106,261 106,351 256,426" fill="#e9e6df"/>
+  <!-- hip roof with a little overhang -->
+  <polygon points="92,262 256,344 256,140" fill="#9a5a32"/>
+  <polygon points="256,344 420,262 256,140" fill="#6f3d21"/>
+  <polyline points="92,262 256,344 420,262" fill="none" stroke="#5a301a" stroke-width="6" stroke-linejoin="round"/>
+  <!-- lit windows -->
+  <polygon points="140,300 180,320 180,355 140,335" fill="#ffc36e"/>
+  <polygon points="200,330 232,346 232,384 200,368" fill="#ffc36e"/>
+  <polygon points="300,350 350,325 350,365 300,390" fill="#ffd79a"/>
+</svg>
