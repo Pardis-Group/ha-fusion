@@ -66,6 +66,24 @@ const stripForwarded = (proxyReq) => {
 	for (const h of FORWARDED) proxyReq.removeHeader(h);
 };
 
+// The whole Home Assistant UI on its own hostname (e.g. ha.a-ll.site pointed at this
+// server by the tunnel), for settings and adding devices. Same header handling as below.
+const HA_HOSTS = (process.env.HA_PUBLIC_HOSTS || '')
+	.split(',')
+	.map((h) => h.trim().toLowerCase())
+	.filter(Boolean);
+const isHaHost = (req) => HA_HOSTS.includes((req.headers.host || '').split(':')[0].toLowerCase());
+
+const haSite = createProxyMiddleware({
+	target: process.env.HASS_URL,
+	changeOrigin: true,
+	ws: true,
+	on: {
+		proxyReq: stripForwarded,
+		proxyReqWs: stripForwarded
+	}
+});
+
 const proxy = createProxyMiddleware({
 	pathFilter: (path) => HA_PATHS.some((p) => path.startsWith(p)),
 	// websocket upgrades skip the express middleware, so fall back to HASS_URL
@@ -78,6 +96,7 @@ const proxy = createProxyMiddleware({
 	}
 });
 
+app.use((req, res, next) => (isHaHost(req) ? haSite(req, res, next) : next()));
 app.use(entryMiddleware, proxy);
 
 // let SvelteKit handle everything else, including serving prerendered pages and static assets
@@ -97,4 +116,4 @@ const server = app.listen(PORT, () => {
 });
 
 // Home Assistant's WebSocket (/api/websocket) through the same proxy
-server.on('upgrade', proxy.upgrade);
+server.on('upgrade', (req, socket, head) => (isHaHost(req) ? haSite.upgrade : proxy.upgrade)(req, socket, head));

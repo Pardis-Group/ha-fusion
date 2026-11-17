@@ -23,4 +23,6 @@ export interface Floorplan {
 	people: string[];
 	/** entity whose temperature is shown; weather.* uses its temperature attribute */
 	temperature?: string;
+	/** where the Settings button opens Home Assistant; worked out from the page address if unset */
+	ha_url?: string;
 }

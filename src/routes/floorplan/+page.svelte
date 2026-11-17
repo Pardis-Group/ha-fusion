@@ -247,6 +247,18 @@
 	}
 	onDestroy(() => clearInterval(effectsTimer));
 
+	/* ---------- Home Assistant settings ----------
+	 * On the home network open Home Assistant directly; from outside use its own
+	 * hostname next to this one (home.a-ll.site -> ha.a-ll.site), or plan.ha_url. */
+	$: haUrl = (() => {
+		if (!browser) return '#';
+		if (plan.ha_url) return plan.ha_url.replace(/\/$/, '');
+		const h = location.hostname;
+		const lan = /^\d+\.\d+\.\d+\.\d+$/.test(h) || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal');
+		if (lan) return `http://${h}:8123`;
+		return `${location.protocol}//ha.${h.split('.').slice(1).join('.')}`;
+	})();
+
 	/* ---------- people & temperature ---------- */
 	$: people = plan.people.map((id) => {
 		const s = $states?.[id];
@@ -357,6 +369,10 @@
 					<span>All lights</span>
 					<svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg>
 				</button>
+				<a class="nav settings" href="{haUrl}/config/dashboard" target="_blank" rel="noopener">
+					<span>Settings</span>
+					<svg viewBox="0 0 24 24"><path d={icons.cog} /></svg>
+				</a>
 			</nav>
 
 			<div class="bottom">
@@ -814,6 +830,13 @@
 	}
 	.nav.all-lights:hover {
 		background: rgba(255, 184, 107, 0.12);
+	}
+	a.nav {
+		text-decoration: none;
+		box-sizing: border-box;
+	}
+	.nav.settings {
+		margin-top: 4px;
 	}
 
 	.pin.unavailable {

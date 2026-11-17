@@ -18,4 +18,6 @@ services:
       TZ: Asia/Tehran
       HASS_URL: http://192.168.1.110:8123
       HASS_TOKEN_FILE: /run/secrets/ha_token
+      # hostnames that get the full Home Assistant UI instead of the dashboard
+      HA_PUBLIC_HOSTS: ha.a-ll.site
     restart: unless-stopped
