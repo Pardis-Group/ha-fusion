@@ -73,7 +73,7 @@ export function enabled() {
 	}
 }
 
-async function ha(path: string, init?: RequestInit) {
+export async function ha(path: string, init?: RequestInit) {
 	const res = await fetch(`${hassUrl()}${path}`, {
 		...init,
 		headers: { Authorization: `Bearer ${serverToken()}`, 'Content-Type': 'application/json' },
@@ -83,12 +83,12 @@ async function ha(path: string, init?: RequestInit) {
 	return res.json();
 }
 
-const service = (name: string, data: Record<string, unknown>) =>
+export const service = (name: string, data: Record<string, unknown>) =>
 	ha(`/api/services/light/${name}`, { method: 'POST', body: JSON.stringify(data) }).catch((e) =>
 		console.error(`light.${name}:`, (e as Error).message)
 	);
 
-async function statesOf(entities: string[]) {
+export async function statesOf(entities: string[]) {
 	const all = (await ha('/api/states')) as { entity_id: string; state: string; attributes: any }[];
 	const wanted = new Set(entities);
 	return new Map(all.filter((s) => wanted.has(s.entity_id)).map((s) => [s.entity_id, s]));
@@ -115,6 +115,13 @@ export async function authorized(header: string | null) {
 	}
 	return false;
 }
+
+/* ---------- shared with the automations ---------- */
+
+/** an effect is playing on this light */
+export const effectRunning = (entity: string) => owner.has(entity);
+/** a sleep timer is dimming this light */
+export const sleepTimerOn = (entity: string) => timers.has(entity);
 
 /* ---------- status ---------- */
 

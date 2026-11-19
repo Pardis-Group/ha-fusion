@@ -15,7 +15,7 @@ services:
     ports:
       - "3015:5050"
     environment:
-      TZ: Asia/Tehran
+      TZ: Europe/Berlin
       HASS_URL: http://192.168.1.110:8123
       HASS_TOKEN_FILE: /run/secrets/ha_token
       # hostnames that get the full Home Assistant UI instead of the dashboard

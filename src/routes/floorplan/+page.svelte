@@ -259,16 +259,143 @@
 		return `${location.protocol}//ha.${h.split('.').slice(1).join('.')}`;
 	})();
 
+	function openAutomations() {
+		openModal(() => import('$lib/Floorplan/AutomationsPanel.svelte'), {});
+	}
+
 	/* ---------- phone layout ---------- */
-	let zoomed = false;
 	let planWrap: HTMLDivElement;
-	async function toggleZoom() {
-		zoomed = !zoomed;
-		await tick();
-		// centre the plan once the width animation (300ms) has finished
-		setTimeout(() => {
-			if (planWrap) planWrap.scrollTo({ left: (planWrap.scrollWidth - planWrap.clientWidth) / 2, behavior: 'smooth' });
-		}, 320);
+	let phone = false;
+	onMount(() => {
+		const mq = window.matchMedia('(max-width: 760px)');
+		const set = () => {
+			phone = mq.matches;
+			if (!phone) resetZoom();
+		};
+		set();
+		mq.addEventListener('change', set);
+		return () => mq.removeEventListener('change', set);
+	});
+
+	/* pinch to zoom, drag to move, double tap to zoom in/out (phones) */
+	const MAX_ZOOM = 4;
+	let zoom = 1;
+	let tx = 0;
+	let ty = 0;
+	let gesturing = false;
+	$: zoomed = zoom > 1.01;
+	const pointers = new Map<number, { x: number; y: number }>();
+	let pinch: { dist: number; zoom: number; px: number; py: number } | null = null;
+	let pan: { x: number; y: number; tx: number; ty: number; moved: boolean } | null = null;
+	let suppressClick = false;
+	let lastTap = { t: 0, x: 0, y: 0 };
+
+	function clampPan() {
+		if (!planEl) return;
+		const w = planEl.offsetWidth;
+		const h = planEl.offsetHeight;
+		tx = Math.min(0, Math.max(w - w * zoom, tx));
+		ty = Math.min(0, Math.max(h - h * zoom, ty));
+	}
+	function zoomAt(next: number, cx: number, cy: number) {
+		// keep the plan point under (cx, cy) where it is
+		const px = (cx - tx) / zoom;
+		const py = (cy - ty) / zoom;
+		zoom = Math.min(MAX_ZOOM, Math.max(1, next));
+		tx = cx - px * zoom;
+		ty = cy - py * zoom;
+		clampPan();
+	}
+	function resetZoom() {
+		zoom = 1;
+		tx = 0;
+		ty = 0;
+	}
+	function local(e: PointerEvent) {
+		const r = planWrap.getBoundingClientRect();
+		return { x: e.clientX - r.left, y: e.clientY - r.top };
+	}
+	function cancelPresses() {
+		pressEnd();
+		clearTimeout(roomTimer);
+	}
+	function onGestureDown(e: PointerEvent) {
+		if (!phone || editing) return;
+		pointers.set(e.pointerId, local(e));
+		if (pointers.size === 2) {
+			const [a, b] = [...pointers.values()];
+			const mx = (a.x + b.x) / 2;
+			const my = (a.y + b.y) / 2;
+			pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom, px: (mx - tx) / zoom, py: (my - ty) / zoom };
+			pan = null;
+			gesturing = true;
+			suppressClick = true;
+			cancelPresses();
+		} else if (pointers.size === 1 && zoomed) {
+			const p = pointers.get(e.pointerId)!;
+			pan = { x: p.x, y: p.y, tx, ty, moved: false };
+		}
+	}
+	function onGestureMove(e: PointerEvent) {
+		if (!pointers.has(e.pointerId)) return;
+		pointers.set(e.pointerId, local(e));
+		if (pinch && pointers.size >= 2) {
+			const [a, b] = [...pointers.values()];
+			const mx = (a.x + b.x) / 2;
+			const my = (a.y + b.y) / 2;
+			zoom = Math.min(MAX_ZOOM, Math.max(1, pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.dist)));
+			tx = mx - pinch.px * zoom;
+			ty = my - pinch.py * zoom;
+			clampPan();
+		} else if (pan) {
+			const p = pointers.get(e.pointerId)!;
+			const dx = p.x - pan.x;
+			const dy = p.y - pan.y;
+			if (!pan.moved && Math.hypot(dx, dy) > 8) {
+				pan.moved = true;
+				gesturing = true;
+				suppressClick = true;
+				cancelPresses();
+			}
+			if (pan.moved) {
+				tx = pan.tx + dx;
+				ty = pan.ty + dy;
+				clampPan();
+			}
+		}
+	}
+	function onGestureUp(e: PointerEvent) {
+		if (!pointers.has(e.pointerId)) return;
+		const p = pointers.get(e.pointerId)!;
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) pinch = null;
+		if (pointers.size === 0) {
+			const wasGesture = gesturing;
+			gesturing = false;
+			pan = null;
+			if (zoom < 1.05) resetZoom();
+			// double tap: zoom in on that spot, or back out
+			const now = Date.now();
+			if (!wasGesture && now - lastTap.t < 300 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
+				if (zoomed) resetZoom();
+				else zoomAt(2.5, p.x, p.y);
+				lastTap.t = 0;
+				suppressClick = true;
+			} else if (!wasGesture) {
+				lastTap = { t: now, x: p.x, y: p.y };
+			}
+			if (suppressClick) setTimeout(() => (suppressClick = false), 50);
+		}
+	}
+	function blockClickAfterGesture(e: MouseEvent) {
+		if (suppressClick) {
+			e.stopPropagation();
+			e.preventDefault();
+		}
+	}
+	function toggleZoom() {
+		if (zoomed) resetZoom();
+		else if (planEl) zoomAt(2.2, planEl.offsetWidth / 2, planEl.offsetHeight / 2);
 	}
 
 	const colourOf = (ids: string[]) => {
@@ -445,6 +572,10 @@
 					<span>All lights</span>
 					<svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg>
 				</button>
+				<button class="nav" on:click={openAutomations}>
+					<span>Automations</span>
+					<svg viewBox="0 0 24 24"><path d={icons.auto} /></svg>
+				</button>
 				<a class="nav settings" href="{haUrl}/config/dashboard" target="_blank" rel="noopener">
 					<span>Settings</span>
 					<svg viewBox="0 0 24 24"><path d={icons.cog} /></svg>
@@ -488,10 +619,24 @@
 				{/each}
 			</div>
 
-			<div class="plan-wrap" class:zoomed bind:this={planWrap}>
+			<!-- the wrapper only handles touch gestures; pins inside are the controls -->
+			<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+			<div
+				class="plan-wrap"
+				class:zoomed
+				class:gesturing
+				bind:this={planWrap}
+				on:pointerdown={onGestureDown}
+				on:pointermove={onGestureMove}
+				on:pointerup={onGestureUp}
+				on:pointercancel={onGestureUp}
+				on:click|capture={blockClickAfterGesture}
+			>
 			<div
 				class="plan"
 				style:--ar={geo ? geo.width / geo.height : undefined}
+				style:transform={phone && zoomed ? `translate(${tx}px, ${ty}px) scale(${zoom})` : undefined}
+				style:--inv={phone ? 1 / zoom : 1}
 				bind:this={planEl}
 				on:pointermove={moveDrag}
 				on:pointerup={endDrag}
@@ -701,6 +846,9 @@
 	<a href="#rooms" class="tab"><svg viewBox="0 0 24 24"><path d={icons.rooms} /></svg><span>Rooms</span></a>
 	<button class="tab" on:click={() => openLights(allLights, 'All lights')}
 		><svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg><span>All lights</span></button
+	>
+	<button class="tab" on:click={openAutomations}
+		><svg viewBox="0 0 24 24"><path d={icons.auto} /></svg><span>Auto</span></button
 	>
 	<a class="tab" href="{haUrl}/config/dashboard" target="_blank" rel="noopener"
 		><svg viewBox="0 0 24 24"><path d={icons.cog} /></svg><span>Settings</span></a
@@ -1274,23 +1422,32 @@
 		}
 		.plan-wrap {
 			display: block;
-			overflow-x: auto;
-			overflow-y: hidden;
-			-webkit-overflow-scrolling: touch;
-			scrollbar-width: none;
-			padding: 4px 0 12px;
+			overflow: hidden;
+			margin-bottom: 12px;
+			/* one finger scrolls the page; two fingers zoom (handled in the page) */
+			touch-action: pan-y;
 		}
-		.plan-wrap::-webkit-scrollbar {
-			display: none;
+		.plan-wrap.zoomed {
+			/* zoomed in: one finger moves the plan instead of the page */
+			touch-action: none;
 		}
 		.plan {
 			width: 100%;
 			margin: 0 auto;
-			touch-action: pan-x pan-y;
-			transition: width 300ms ease;
+			transform-origin: 0 0;
+			transition: transform 250ms ease;
+			will-change: transform;
 		}
-		.plan-wrap.zoomed .plan {
-			width: 210%;
+		.plan-wrap.gesturing .plan {
+			transition: none;
+		}
+		/* pins and room tags keep their size while the plan is zoomed */
+		.pin,
+		.pin:hover {
+			transform: translate(-50%, -50%) scale(var(--inv, 1));
+		}
+		.room {
+			transform: translate(-50%, -50%) scale(var(--inv, 1));
 		}
 		.m-zoom {
 			display: grid;
@@ -1491,7 +1648,7 @@
 		/* tab bar */
 		.m-tabbar {
 			display: grid;
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(5, 1fr);
 			position: fixed;
 			left: 0;
 			right: 0;
@@ -1554,7 +1711,6 @@
 		}
 		.pin,
 		.nav,
-		.glow,
 		.avatar {
 			transition: none;
 		}

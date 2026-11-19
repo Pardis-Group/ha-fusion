@@ -1,5 +1,9 @@
 import { error, type Handle } from '@sveltejs/kit';
 import { authorized } from '$lib/server/effects';
+import { startAutomations } from '$lib/server/automations';
+
+// auto brightness and movie mode run for as long as the server does
+startAutomations();
 
 /**
  * Dashboard API endpoints that only read harmless files and can be used without

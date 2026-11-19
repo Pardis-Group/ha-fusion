@@ -1,0 +1,12 @@
+[Unit]
+Description=HA Fusion: watch what the living-room TV plays (for movie mode)
+After=network-online.target
+
+[Service]
+ExecStart=/home/len-ser-01/.nvm/versions/node/v22.23.2/bin/node /home/len-ser-01/projects/ha-fusion/scripts/tv-watch.mjs
+Environment=TV_HOST=192.168.1.122:5555
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

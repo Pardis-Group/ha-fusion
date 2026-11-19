@@ -57,11 +57,21 @@ export const setSleepTimer = (conn: Connection | undefined, entities: string[], 
 export const cancelSleepTimer = (conn: Connection | undefined, entities: string[]) =>
 	api(conn, { action: 'cancel_timer', entities });
 
+/** tell auto brightness the user chose these lights' look by hand, so it leaves them alone */
+export function markManual(entities: string[]) {
+	fetch(`${base}/_api/automations`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ action: 'manual', entities })
+	}).catch(() => undefined);
+}
+
 /**
  * light.turn_on for several lights, adding a fade only for bulbs that support it
  * (Home Assistant rejects a transition on some integrations otherwise).
  */
 export function turnOn(conn: Connection, states: HassEntities, entities: string[], data: Record<string, unknown>, fade = 0) {
+	markManual(entities);
 	const withFade = entities.filter((e) => ((states?.[e]?.attributes?.supported_features ?? 0) & TRANSITION) !== 0);
 	const without = entities.filter((e) => !withFade.includes(e));
 	if (withFade.length) callService(conn, 'light', 'turn_on', { ...data, ...(fade ? { transition: fade } : {}), entity_id: withFade });
