@@ -21,8 +21,8 @@ const TRANSITION = 32;
 export interface Settings {
 	adaptive: {
 		enabled: boolean;
-		/** light entity ids, or 'all' */
-		lights: string[] | 'all';
+		/** lights switched out of auto brightness with their Auto button (new lights join automatically) */
+		off: string[];
 		wake: string; // "07:00"
 		bedtime: string; // "23:30"
 		morning: number; // brightness %, from wake-up until there is daylight
@@ -36,7 +36,8 @@ export interface Settings {
 		enabled: boolean;
 		/** 'playbox': films and episodes in PlayBox; 'any': any video on the TV */
 		source: 'playbox' | 'any';
-		lights: string[] | 'all';
+		/** lights switched out of movie mode with their Movie button */
+		off: string[];
 		level: number; // Movie scene brightness %
 		pause: 'soft' | 'keep';
 	};
@@ -45,7 +46,7 @@ export interface Settings {
 export const defaults: Settings = {
 	adaptive: {
 		enabled: true,
-		lights: 'all',
+		off: [],
 		wake: '07:00',
 		bedtime: '23:30',
 		morning: 70,
@@ -55,16 +56,28 @@ export const defaults: Settings = {
 		night: 5,
 		warmth: true
 	},
-	movie: { enabled: true, source: 'playbox', lights: 'all', level: 12, pause: 'soft' }
+	movie: { enabled: true, source: 'playbox', off: [], level: 12, pause: 'soft' }
 };
 
+// the old settings had one switch for all lights; if it was off, every light starts with Auto off
+let pendingAllOff = false;
+let pendingMovieOff = false;
 let settings: Settings = load();
 
 function load(): Settings {
 	try {
 		const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'));
-		return { adaptive: { ...defaults.adaptive, ...s.adaptive }, movie: { ...defaults.movie, ...s.movie } };
-	} catch {
+		const adaptive = { ...defaults.adaptive, ...s.adaptive, off: lightList(s.adaptive?.off) };
+		const movie = { ...defaults.movie, ...s.movie, off: lightList(s.movie?.off) };
+		if ('lights' in (s.adaptive ?? {}) && s.adaptive.enabled === false) pendingAllOff = true;
+		if ('lights' in (s.movie ?? {}) && s.movie.enabled === false) pendingMovieOff = true;
+		adaptive.enabled = true; // per-light buttons now; the global switch stays on
+		movie.enabled = true;
+		delete (adaptive as any).lights;
+		delete (movie as any).lights;
+		return { adaptive, movie };
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') console.error('automations: settings', (e as Error).message);
 		return structuredClone(defaults);
 	}
 }
@@ -74,8 +87,10 @@ const clamp = (v: unknown, lo: number, hi: number, d: number) => {
 	return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d;
 };
 const hhmm = (v: unknown, d: string) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : d);
-const lightList = (v: unknown) =>
-	v === 'all' || !Array.isArray(v) ? 'all' : v.filter((e) => typeof e === 'string' && e.startsWith('light.'));
+// a function declaration, so load() can use it while the module is still starting up
+function lightList(v: unknown): string[] {
+	return Array.isArray(v) ? [...new Set(v.filter((e) => typeof e === 'string' && e.startsWith('light.')))] : [];
+}
 
 export function saveSettings(input: any) {
 	const a = input?.adaptive ?? {};
@@ -84,7 +99,7 @@ export function saveSettings(input: any) {
 	settings = {
 		adaptive: {
 			enabled: Boolean(a.enabled ?? settings.adaptive.enabled),
-			lights: lightList(a.lights ?? settings.adaptive.lights),
+			off: lightList(a.off ?? settings.adaptive.off),
 			wake: hhmm(a.wake, settings.adaptive.wake),
 			bedtime: hhmm(a.bedtime, settings.adaptive.bedtime),
 			morning: clamp(a.morning, 1, 100, d.adaptive.morning),
@@ -97,7 +112,7 @@ export function saveSettings(input: any) {
 		movie: {
 			enabled: Boolean(m.enabled ?? settings.movie.enabled),
 			source: m.source === 'any' ? 'any' : 'playbox',
-			lights: lightList(m.lights ?? settings.movie.lights),
+			off: lightList(m.off ?? settings.movie.off),
 			level: clamp(m.level, 1, 100, d.movie.level),
 			pause: m.pause === 'keep' ? 'keep' : 'soft'
 		}
@@ -108,6 +123,19 @@ export function saveSettings(input: any) {
 }
 
 export const getSettings = () => settings;
+
+/** the Auto / Movie buttons in a light's panel: switch lights in or out of a feature */
+export function setLights(feature: 'adaptive' | 'movie', entities: string[], on: boolean) {
+	const list = new Set(settings[feature].off);
+	for (const e of entities) {
+		if (!e.startsWith('light.')) continue;
+		if (on) list.delete(e);
+		else list.add(e);
+	}
+	saveSettings({ ...settings, [feature]: { ...settings[feature], off: [...list] } });
+	// switching Auto back on also forgets a hand-made change, so it adjusts right away
+	if (feature === 'adaptive' && on) resume(entities);
+}
 
 /* ---------- time of day in the home's time zone ---------- */
 
@@ -197,11 +225,21 @@ const movieHeld = new Set<string>();
 async function pollStates() {
 	const all = (await ha('/api/states')) as State[];
 	states = new Map(all.filter((s) => s.entity_id.startsWith('light.')).map((s) => [s.entity_id, s]));
+	if ((pendingAllOff || pendingMovieOff) && states.size) {
+		const lights = [...states.keys()];
+		saveSettings({
+			...settings,
+			adaptive: { ...settings.adaptive, off: pendingAllOff ? lights : settings.adaptive.off },
+			movie: { ...settings.movie, off: pendingMovieOff ? lights : settings.movie.off }
+		});
+		pendingAllOff = pendingMovieOff = false;
+	}
 }
 
 const pctOf = (s: State) => Math.round(((s.attributes?.brightness ?? 0) / 255) * 100);
 const canFade = (s: State) => ((s.attributes?.supported_features ?? 0) & TRANSITION) !== 0;
-const targets = (list: string[] | 'all') => (list === 'all' ? [...states.keys()] : list.filter((e) => states.has(e)));
+/** every light except the ones switched out of a feature */
+const targets = (off: string[]) => [...states.keys()].filter((e) => !off.includes(e));
 
 /** the dashboard tells us when someone sets a light by hand (scene, colour, brightness) */
 export function markManual(entities: string[]) {
@@ -226,7 +264,7 @@ async function adaptive() {
 	if (due) lastAdaptive = now;
 	const goal = curveAt(localMinutes(new Date()));
 
-	for (const e of targets(a.lights)) {
+	for (const e of targets(a.off)) {
 		const s = states.get(e)!;
 		const on = s.state === 'on';
 		const turnedOn = on && wasOn.get(e) === false;
@@ -345,7 +383,7 @@ async function movie() {
 
 	if (from === 'idle') {
 		// take the lights that are on, remember how they were, stop any effect on them
-		for (const e of targets(m.lights)) {
+		for (const e of targets(m.off)) {
 			const s = states.get(e)!;
 			if (s.state !== 'on') continue;
 			const a = s.attributes ?? {};
@@ -401,6 +439,8 @@ export function automationStatus() {
 		target: curveAt(nowMin),
 		curve,
 		manual: [...manual.keys()],
+		autoOff: settings.adaptive.off,
+		movieOff: settings.movie.off,
 		movie: {
 			state: movieState,
 			test: testOverride,

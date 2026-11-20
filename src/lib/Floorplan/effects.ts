@@ -57,13 +57,39 @@ export const setSleepTimer = (conn: Connection | undefined, entities: string[], 
 export const cancelSleepTimer = (conn: Connection | undefined, entities: string[]) =>
 	api(conn, { action: 'cancel_timer', entities });
 
+/* ---------- per-light Auto brightness and Movie buttons ---------- */
+
+export type AutomationState = { autoOff: string[]; movieOff: string[]; manual: string[]; movieState: string };
+export const automation = writable<AutomationState>({ autoOff: [], movieOff: [], manual: [], movieState: 'idle' });
+
+async function automationsApi(body?: Record<string, unknown>) {
+	const res = await fetch(`${base}/_api/automations`, {
+		method: body ? 'POST' : 'GET',
+		headers: { 'Content-Type': 'application/json' },
+		...(body ? { body: JSON.stringify(body) } : {})
+	});
+	if (!res.ok) throw new Error(await res.text());
+	const { status } = await res.json();
+	automation.set({
+		autoOff: status.autoOff ?? [],
+		movieOff: status.movieOff ?? [],
+		manual: status.manual ?? [],
+		movieState: status.movie?.state ?? 'idle'
+	});
+}
+
+export const refreshAutomations = () => automationsApi().catch(() => undefined);
+
+/** switch lights in or out of auto brightness ('adaptive') or movie mode ('movie') */
+export const setFeature = (feature: 'adaptive' | 'movie', entities: string[], on: boolean) =>
+	automationsApi({ action: 'set_lights', feature, entities, on }).catch((e) => console.error(e));
+
+/** a light set by hand goes back to auto brightness */
+export const resumeAuto = (entities: string[]) => automationsApi({ action: 'resume', entities }).catch((e) => console.error(e));
+
 /** tell auto brightness the user chose these lights' look by hand, so it leaves them alone */
 export function markManual(entities: string[]) {
-	fetch(`${base}/_api/automations`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'manual', entities })
-	}).catch(() => undefined);
+	automationsApi({ action: 'manual', entities }).catch(() => undefined);
 }
 
 /**

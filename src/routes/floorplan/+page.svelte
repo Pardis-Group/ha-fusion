@@ -9,7 +9,7 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { icons, iconFor } from '$lib/Floorplan/icons';
 	import type { Floorplan, Pin } from '$lib/Floorplan/types';
-	import { activeEffects, refreshEffects, stopEffect } from '$lib/Floorplan/effects';
+	import { activeEffects, refreshEffects, stopEffect, refreshAutomations } from '$lib/Floorplan/effects';
 
 	export let data: { configuration: any; floorplan: Floorplan; theme: any; translations: any; geometry: Geometry | null };
 
@@ -243,7 +243,11 @@
 	let effectsTimer: ReturnType<typeof setInterval> | undefined;
 	$: if ($connected && browser && !effectsTimer) {
 		refreshEffects($connection);
-		effectsTimer = setInterval(() => refreshEffects($connection), 5000);
+		refreshAutomations();
+		effectsTimer = setInterval(() => {
+			refreshEffects($connection);
+			refreshAutomations();
+		}, 5000);
 	}
 	onDestroy(() => clearInterval(effectsTimer));
 
@@ -258,10 +262,6 @@
 		if (lan) return `http://${h}:8123`;
 		return `${location.protocol}//ha.${h.split('.').slice(1).join('.')}`;
 	})();
-
-	function openAutomations() {
-		openModal(() => import('$lib/Floorplan/AutomationsPanel.svelte'), {});
-	}
 
 	/* ---------- phone layout ---------- */
 	let planWrap: HTMLDivElement;
@@ -572,10 +572,6 @@
 					<span>All lights</span>
 					<svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg>
 				</button>
-				<button class="nav" on:click={openAutomations}>
-					<span>Automations</span>
-					<svg viewBox="0 0 24 24"><path d={icons.auto} /></svg>
-				</button>
 				<a class="nav settings" href="{haUrl}/config/dashboard" target="_blank" rel="noopener">
 					<span>Settings</span>
 					<svg viewBox="0 0 24 24"><path d={icons.cog} /></svg>
@@ -846,9 +842,6 @@
 	<a href="#rooms" class="tab"><svg viewBox="0 0 24 24"><path d={icons.rooms} /></svg><span>Rooms</span></a>
 	<button class="tab" on:click={() => openLights(allLights, 'All lights')}
 		><svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg><span>All lights</span></button
-	>
-	<button class="tab" on:click={openAutomations}
-		><svg viewBox="0 0 24 24"><path d={icons.auto} /></svg><span>Auto</span></button
 	>
 	<a class="tab" href="{haUrl}/config/dashboard" target="_blank" rel="noopener"
 		><svg viewBox="0 0 24 24"><path d={icons.cog} /></svg><span>Settings</span></a
@@ -1648,7 +1641,7 @@
 		/* tab bar */
 		.m-tabbar {
 			display: grid;
-			grid-template-columns: repeat(5, 1fr);
+			grid-template-columns: repeat(4, 1fr);
 			position: fixed;
 			left: 0;
 			right: 0;

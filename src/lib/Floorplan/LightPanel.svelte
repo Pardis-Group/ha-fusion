@@ -34,8 +34,13 @@
 		clearStatic,
 		refreshEffects,
 		setSleepTimer,
-		cancelSleepTimer
+		cancelSleepTimer,
+		automation,
+		refreshAutomations,
+		setFeature,
+		resumeAuto
 	} from './effects';
+	import { icons } from './icons';
 	import { modeIcons } from './modeIcons';
 
 	/** tiles light enough to need a dark glyph */
@@ -113,7 +118,27 @@
 	$: if (!holdK && ref?.attributes?.color_temp_kelvin) kelvin = ref.attributes.color_temp_kelvin;
 
 	let tab: 'white' | 'color' = 'white';
+	/* ---------- Auto brightness and Movie mode, per light ---------- */
+	$: autoOn = entities.length > 0 && entities.every((e) => !$automation.autoOff.includes(e));
+	$: autoPaused = autoOn && entities.some((e) => $automation.manual.includes(e));
+	$: movieOn = entities.length > 0 && entities.every((e) => !$automation.movieOff.includes(e));
+	$: autoTitle = autoPaused
+		? 'Changed by hand: tap to go back to automatic brightness'
+		: autoOn
+			? 'Brightness follows the time of day: low in daylight, bright in the evening, dim towards bedtime'
+			: 'Turn on automatic brightness for the time of day';
+	$: movieTitle = movieOn
+		? 'Goes to the Movie scene while a film plays on the living-room TV'
+		: 'Turn on: dim to the Movie scene while a film plays on the living-room TV';
+
+	async function toggleAuto() {
+		if (autoPaused) await resumeAuto(entities);
+		else await setFeature('adaptive', entities, !autoOn);
+	}
+	const toggleMovie = () => setFeature('movie', entities, !movieOn);
+
 	onMount(() => {
+		refreshAutomations();
 		tab = ref?.attributes?.color_mode && ref.attributes.color_mode !== 'color_temp' && canColor ? 'color' : canTemp ? 'white' : 'color';
 		refreshEffects($connection);
 	});
@@ -125,6 +150,7 @@
 
 	async function setBrightness() {
 		holdB = false;
+		setTimeout(refreshAutomations, 600);
 		if (running) return changeSettings({ dim: Math.max(0.05, brightness / 100) });
 		clearStatic(entities);
 		turnOn($connection, $states, entities, { brightness_pct: brightness }, 0.4);
@@ -234,7 +260,17 @@
 				<!-- brightness (scales the effect while one runs) -->
 				<div class="row">
 					<span class="label">{running ? 'Effect brightness' : 'Brightness'}</span>
-					<span class="value">{brightness}%</span>
+					<span class="pills">
+						<button class="pill" class:on={autoOn && !autoPaused} class:paused={autoPaused} title={autoTitle} aria-pressed={autoOn} on:click={toggleAuto}>
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path d={icons.auto} /></svg>
+							{autoPaused ? 'Auto · paused' : 'Auto'}
+						</button>
+						<button class="pill" class:on={movieOn} title={movieTitle} aria-pressed={movieOn} on:click={toggleMovie}>
+							<svg viewBox="0 0 24 24" aria-hidden="true">{@html modeIcons.movie}</svg>
+							Movie
+						</button>
+						<span class="value">{brightness}%</span>
+					</span>
 				</div>
 				<input
 					class="range brightness"
@@ -473,6 +509,52 @@
 		font-size: 0.9rem;
 		color: #a5a5aa;
 		font-variant-numeric: tabular-nums;
+	}
+	.pills {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.pills .value {
+		min-width: 2.6rem;
+		text-align: right;
+	}
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.3rem 0.65rem 0.3rem 0.5rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 999px;
+		background: transparent;
+		color: #a5a5aa;
+		font: inherit;
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			background 150ms ease,
+			color 150ms ease,
+			border-color 150ms ease;
+	}
+	.pill svg {
+		width: 0.95rem;
+		height: 0.95rem;
+		fill: currentColor;
+	}
+	.pill.on {
+		background: rgba(255, 184, 107, 0.16);
+		border-color: rgba(255, 184, 107, 0.55);
+		color: #ffcf9a;
+	}
+	.pill.paused {
+		border-style: dashed;
+		border-color: rgba(255, 184, 107, 0.55);
+		color: #ffcf9a;
+	}
+	.pill:focus-visible {
+		outline: 2px solid #ffb86b;
+		outline-offset: 2px;
 	}
 	.section {
 		margin-top: 0.9rem;
