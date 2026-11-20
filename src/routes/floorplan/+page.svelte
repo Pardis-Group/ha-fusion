@@ -72,6 +72,7 @@
 	$: visiblePins = plan.pins.filter((p) => {
 		const m = modes.find((m) => m.id === mode);
 		if (mode === 'rooms') return false;
+		if (focusRoom && p.room !== focusRoom) return false;
 		return !m?.domains || m.domains.includes(domain(p.entity_id));
 	});
 
@@ -373,12 +374,17 @@
 			const wasGesture = gesturing;
 			gesturing = false;
 			pan = null;
-			if (zoom < 1.05) resetZoom();
+			if (zoom < 1.05) {
+				resetZoom();
+				focusRoom = null;
+			}
 			// double tap: zoom in on that spot, or back out
 			const now = Date.now();
 			if (!wasGesture && now - lastTap.t < 300 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
-				if (zoomed) resetZoom();
-				else zoomAt(2.5, p.x, p.y);
+				if (zoomed) {
+					resetZoom();
+					focusRoom = null;
+				} else zoomAt(2.5, p.x, p.y);
 				lastTap.t = 0;
 				suppressClick = true;
 			} else if (!wasGesture) {
@@ -393,8 +399,60 @@
 			e.preventDefault();
 		}
 	}
+	/* ---------- show one room: zoom onto it and dim the rest of the flat ---------- */
+	const FOCUS_KEY = 'homebox.room';
+	let focusRoom: string | null = null;
+	let roomMenuOpen = false;
+	$: roomNames = plan.rooms.map((r) => r.name).filter((n) => !geo || geo.rooms[n]);
+	const roomLightsOn = (st: any, name: string) =>
+		plan.pins.filter((p) => p.room === name && domain(p.entity_id) === 'light' && st?.[p.entity_id]?.state === 'on').length;
+
+	function applyFocus() {
+		if (!focusRoom || !geo?.rooms[focusRoom] || !planEl) return resetZoom();
+		const pts = geo.rooms[focusRoom].flat();
+		const W = planEl.offsetWidth;
+		const H = planEl.offsetHeight;
+		const sx = W / geo.width;
+		const sy = H / geo.height;
+		const x0 = Math.min(...pts.map((p) => p[0])) * sx;
+		const x1 = Math.max(...pts.map((p) => p[0])) * sx;
+		const y0 = Math.min(...pts.map((p) => p[1])) * sy;
+		const y1 = Math.max(...pts.map((p) => p[1])) * sy;
+		zoom = Math.max(1, Math.min(MAX_ZOOM, W / ((x1 - x0) * 1.18), H / ((y1 - y0) * 1.18)));
+		tx = W / 2 - ((x0 + x1) / 2) * zoom;
+		ty = H / 2 - ((y0 + y1) / 2) * zoom;
+		clampPan();
+	}
+	function focusOn(name: string | null) {
+		focusRoom = name;
+		roomMenuOpen = false;
+		try {
+			if (name) localStorage.setItem(FOCUS_KEY, name);
+			else localStorage.removeItem(FOCUS_KEY);
+		} catch {
+			/* private mode: the choice just isn't remembered */
+		}
+		applyFocus();
+	}
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem(FOCUS_KEY);
+			if (saved && plan.rooms.some((r) => r.name === saved)) focusRoom = saved;
+		} catch {
+			/* no storage */
+		}
+		// wait for the plan image to have its size
+		setTimeout(applyFocus, 300);
+		const onResize = () => focusRoom && applyFocus();
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
 	function toggleZoom() {
-		if (zoomed) resetZoom();
+		if (zoomed) {
+			focusRoom = null;
+			resetZoom();
+		}
 		else if (planEl) zoomAt(2.2, planEl.offsetWidth / 2, planEl.offsetHeight / 2);
 	}
 
@@ -520,12 +578,12 @@
 </script>
 
 <svelte:head>
-	<title>Home</title>
+	<title>Homebox</title>
 	<meta name="theme-color" content="#1d1e21" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-	<meta name="apple-mobile-web-app-title" content="Home" />
+	<meta name="apple-mobile-web-app-title" content="Homebox" />
 	<link rel="apple-touch-icon" href="{base}/home-icon-180.png" />
 </svelte:head>
 
@@ -536,7 +594,7 @@
 		<!-- phone: compact header -->
 		<header class="m-header" id="top">
 			<div>
-				<div class="brand small"><img src="{base}/home-icon.svg" alt="" /><span>Home</span></div>
+				<div class="brand small"><img src="{base}/home-icon.svg" alt="" /><span>Homebox</span></div>
 				<div class="m-time">{time}</div>
 				<div class="m-date">{date}</div>
 			</div>
@@ -557,7 +615,7 @@
 
 		<!-- sidebar -->
 		<aside>
-			<div class="brand"><img src="{base}/home-icon.svg" alt="" /><span>Home</span></div>
+			<div class="brand"><img src="{base}/home-icon.svg" alt="" /><span>Homebox</span></div>
 			<div class="clock">
 				<div class="time">{time}</div>
 				<div class="date">{date}</div>
@@ -579,6 +637,25 @@
 					<svg viewBox="0 0 24 24"><path d={icons.cog} /></svg>
 				</a>
 			</nav>
+
+			<div class="room-pick">
+				<div class="label">Room</div>
+				<button class="nav room-current" class:active={!!focusRoom} aria-expanded={roomMenuOpen} on:click={() => (roomMenuOpen = !roomMenuOpen)}>
+					<span>{focusRoom ?? 'Whole home'}</span>
+					<svg viewBox="0 0 24 24" class:open={roomMenuOpen}><path d="M7 10l5 5 5-5z" /></svg>
+				</button>
+				{#if roomMenuOpen}
+					<div class="room-list">
+						<button class:active={!focusRoom} on:click={() => focusOn(null)}>Whole home</button>
+						{#each roomNames as name}
+							<button class:active={focusRoom === name} on:click={() => focusOn(name)}>
+								{name}
+								{#if roomLightsOn($states, name)}<span class="lit-dot" title="Lights on"></span>{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
 
 			<div class="bottom">
 				{#if people.length}
@@ -609,13 +686,28 @@
 		</aside>
 
 		<!-- plan -->
-		<main>
+		<main class:room-view={!!focusRoom}>
 			<!-- phone: what the pins show -->
 			<div class="m-modes" role="tablist">
+				<button class="room-chip" class:active={!!focusRoom} aria-expanded={roomMenuOpen} on:click={() => (roomMenuOpen = !roomMenuOpen)}>
+					{focusRoom ?? 'Whole home'}
+					<svg viewBox="0 0 24 24" class:open={roomMenuOpen}><path d="M7 10l5 5 5-5z" /></svg>
+				</button>
 				{#each modes as m}
 					<button role="tab" class:active={mode === m.id} on:click={() => (mode = m.id)}>{m.label}</button>
 				{/each}
 			</div>
+			{#if roomMenuOpen}
+				<div class="m-room-list">
+					<button class:active={!focusRoom} on:click={() => focusOn(null)}>Whole home</button>
+					{#each roomNames as name}
+						<button class:active={focusRoom === name} on:click={() => focusOn(name)}>
+							{name}
+							{#if roomLightsOn($states, name)}<span class="lit-dot"></span>{/if}
+						</button>
+					{/each}
+				</div>
+			{/if}
 
 			<!-- the wrapper only handles touch gestures; pins inside are the controls -->
 			<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
@@ -633,8 +725,9 @@
 			<div
 				class="plan"
 				style:--ar={geo ? geo.width / geo.height : undefined}
-				style:transform={phone && zoomed ? `translate(${tx}px, ${ty}px) scale(${zoom})` : undefined}
-				style:--inv={phone ? 1 / zoom : 1}
+				class:focused={!!focusRoom}
+				style:transform={(phone && zoomed) || focusRoom ? `translate(${tx}px, ${ty}px) scale(${zoom})` : undefined}
+				style:--inv={1 / zoom}
 				bind:this={planEl}
 				on:pointermove={moveDrag}
 				on:pointerup={endDrag}
@@ -683,8 +776,23 @@
 					</svg>
 				{/if}
 
+				{#if geo && focusRoom && geo.rooms[focusRoom]}
+					<!-- dim everything outside the room on show -->
+					<svg class="focus-mask" viewBox="0 0 {geo.width} {geo.height}" preserveAspectRatio="none" aria-hidden="true">
+						<defs>
+							<mask id="focus-cut">
+								<rect width={geo.width} height={geo.height} fill="white" />
+								{#each geo.rooms[focusRoom] as poly}
+									<polygon points={poly.map((p) => p.join(',')).join(' ')} fill="black" />
+								{/each}
+							</mask>
+						</defs>
+						<rect width={geo.width} height={geo.height} fill="#17181b" opacity="0.8" mask="url(#focus-cut)" />
+					</svg>
+				{/if}
+
 				{#if mode === 'rooms' && !editing}
-					{#each plan.rooms as room (room.name)}
+					{#each plan.rooms.filter((r) => !focusRoom || r.name === focusRoom) as room (room.name)}
 						{@const lit = roomPins(room.name).filter((p) => isOn($states, p.entity_id)).length}
 						<button
 							class="room"
@@ -844,9 +952,6 @@
 	<a href="#rooms" class="tab"><svg viewBox="0 0 24 24"><path d={icons.rooms} /></svg><span>Rooms</span></a>
 	<button class="tab" on:click={() => openLights(allLights, 'All lights')}
 		><svg viewBox="0 0 24 24"><path d={icons.sliders} /></svg><span>All lights</span></button
-	>
-	<a class="tab" href="{haUrl}/config/dashboard" target="_blank" rel="noopener"
-		><svg viewBox="0 0 24 24"><path d={icons.cog} /></svg><span>Settings</span></a
 	>
 </nav>
 
@@ -1068,6 +1173,94 @@
 		padding: 18px 22px;
 		min-width: 0;
 		min-height: 0;
+		/* a room view zooms the plan; keep it inside this area */
+		overflow: hidden;
+		transition: background 450ms ease;
+	}
+	/* the margin around the plan matches the dimmed rest of the flat */
+	main.room-view {
+		background: #1a1b1e;
+	}
+	.plan {
+		transform-origin: 0 0;
+		transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	/* pins and room tags keep their size while a room is shown */
+	.plan.focused .pin,
+	.plan.focused .pin:hover,
+	.plan.focused .room {
+		transform: translate(-50%, -50%) scale(var(--inv, 1));
+	}
+	.focus-mask {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	/* room picker */
+	.room-pick {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: -14px;
+	}
+	.room-pick .label {
+		padding-left: 4px;
+	}
+	.room-current svg {
+		transition: transform 150ms ease;
+	}
+	.room-current svg.open,
+	.room-chip svg.open {
+		transform: rotate(180deg);
+	}
+	.room-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 6px;
+		border-radius: 14px;
+		background: rgba(255, 255, 255, 0.04);
+		max-height: 300px;
+		overflow-y: auto;
+	}
+	.room-list button,
+	.m-room-list button {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 9px 12px;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		color: #c9c8c4;
+		font: inherit;
+		font-size: 14.5px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.room-list button:hover {
+		background: rgba(255, 255, 255, 0.06);
+	}
+	.room-list button.active,
+	.m-room-list button.active {
+		background: #f3f1ec;
+		color: #1d1e21;
+		font-weight: 600;
+	}
+	.lit-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #ffb86b;
+		box-shadow: 0 0 8px #ffb86b;
+		flex: none;
+	}
+	.m-room-list {
+		display: none;
 	}
 
 	.plan {
@@ -1440,6 +1633,39 @@
 			color: #1d1e21;
 			font-weight: 600;
 		}
+		.m-modes .room-chip {
+			display: inline-flex;
+			align-items: center;
+			gap: 2px;
+			padding-right: 8px;
+			border: 1px solid rgba(255, 184, 107, 0.45);
+			background: rgba(255, 184, 107, 0.1);
+			color: #ffcf9a;
+			font-weight: 600;
+		}
+		.m-modes .room-chip.active {
+			background: #ffb86b;
+			border-color: #ffb86b;
+			color: #1d1e21;
+		}
+		.m-modes .room-chip svg {
+			width: 18px;
+			height: 18px;
+			fill: currentColor;
+			transition: transform 150ms ease;
+		}
+		.m-room-list {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+			padding: 0 10px 10px;
+		}
+		.m-room-list button {
+			padding: 8px 12px;
+			background: rgba(255, 255, 255, 0.06);
+			font-size: 13.5px;
+			border-radius: 999px;
+		}
 		.plan-wrap {
 			display: block;
 			overflow: hidden;
@@ -1668,7 +1894,7 @@
 		/* tab bar */
 		.m-tabbar {
 			display: grid;
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(3, 1fr);
 			position: fixed;
 			left: 0;
 			right: 0;

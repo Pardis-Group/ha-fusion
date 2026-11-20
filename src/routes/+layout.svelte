@@ -36,8 +36,8 @@
 </script>
 
 <svelte:head>
-	<title>FUSION</title>
-	<meta name="description" content="fusion" />
+	<title>Homebox</title>
+	<meta name="description" content="Homebox" />
 	<meta charset="utf-8" />
 </svelte:head>
 

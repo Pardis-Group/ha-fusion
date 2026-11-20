@@ -1,7 +1,7 @@
 {
-	"name": "Home",
-	"short_name": "Home",
-	"description": "Floor plan and lights of the flat",
+	"name": "Homebox",
+	"short_name": "Homebox",
+	"description": "Homebox: floor plan and lights of the flat",
 	"start_url": "/",
 	"scope": "/",
 	"display": "standalone",
