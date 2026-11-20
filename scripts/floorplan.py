@@ -775,6 +775,8 @@ PINS = [
     ("light.floor_eingang_2", "Floor", None, (540, 560)),
     ("light.office_eingang_2", "Floor", None, (990, 490)),
     ("light.office_homeoffice", "Office", None, (575, 830)),
+    ("light.wc_wc", "Kitchen", None, (480, 250)),
+    ("light.wc_wc_2", "WC", None, (690, 240)),
 ]
 
 # world rectangles of each room, for the lighting overlay on the page

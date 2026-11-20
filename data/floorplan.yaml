@@ -57,3 +57,13 @@ pins:
   room: Office
   x: 48.2
   y: 78.1
+- id: 6
+  entity_id: light.wc_wc
+  room: Kitchen
+  x: 56.8
+  y: 35.8
+- id: 7
+  entity_id: light.wc_wc_2
+  room: WC
+  x: 72.5
+  y: 40.4
