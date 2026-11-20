@@ -536,6 +536,7 @@
 		<!-- phone: compact header -->
 		<header class="m-header" id="top">
 			<div>
+				<div class="brand small"><img src="{base}/home-icon.svg" alt="" /><span>Home</span></div>
 				<div class="m-time">{time}</div>
 				<div class="m-date">{date}</div>
 			</div>
@@ -556,6 +557,7 @@
 
 		<!-- sidebar -->
 		<aside>
+			<div class="brand"><img src="{base}/home-icon.svg" alt="" /><span>Home</span></div>
 			<div class="clock">
 				<div class="time">{time}</div>
 				<div class="date">{date}</div>
@@ -900,6 +902,31 @@
 		border-right: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: -14px;
+		font-size: 17px;
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		color: #f3f1ec;
+	}
+	.brand img {
+		width: 34px;
+		height: 34px;
+		border-radius: 9px;
+		box-shadow: 0 4px 12px -4px rgba(10, 111, 194, 0.7);
+	}
+	.brand.small {
+		margin: 0 0 12px;
+		font-size: 15px;
+	}
+	.brand.small img {
+		width: 28px;
+		height: 28px;
+		border-radius: 8px;
+	}
 	.time {
 		font-size: 68px;
 		font-weight: 200;
